@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 
@@ -50,7 +51,7 @@ func detectTimeFormat(str string) string {
 		}
 	}
 
-	return time.DateOnly
+	return time.DateTime
 }
 
 func ConvertStringToTime(value string) time.Time {
@@ -61,7 +62,7 @@ func ConvertStringToTime(value string) time.Time {
 
 	format := detectTimeFormat(value)
 
-	result, err := time.Parse(format, value)
+	result, err := time.ParseInLocation(format, value, time.Local)
 
 	if err != nil {
 		return time.Time{}
@@ -87,6 +88,10 @@ func GetPaginationData(c *gin.Context) PaginationData {
 	paginationData.StartDate = ConvertStringToTime(startDate)
 	paginationData.EndDate = ConvertStringToTime(endDate)
 	paginationData.Date = ConvertStringToTime(date)
+
+	// how to print timezone of time
+
+	fmt.Println("Timezone of time is ", paginationData.StartDate.Location(), " and time is ", paginationData.StartDate)
 
 	// check if time value is zero then set it to end of the day in endDate
 
