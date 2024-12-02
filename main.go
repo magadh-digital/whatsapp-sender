@@ -39,6 +39,10 @@ func main() {
 	server.GET("/", handler.Home)
 
 	templateRoutes := server.Group("/templates")
+	otpRoutes := server.Group("/otp")
+
+	otpRoutes.POST("/send", handler.SendOTP)
+	otpRoutes.POST("/validate", handler.ValidateOtp)
 
 	server.GET("/message-logs", handler.ListMessageLog)
 
