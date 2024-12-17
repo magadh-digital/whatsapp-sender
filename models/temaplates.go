@@ -35,8 +35,9 @@ type WhatsappTemplate struct {
 	Components []struct {
 		Type       string `json:"type" binding:"required"`
 		Parameters []struct {
-			Type string `json:"type" binding:"required"`
-			Text string `json:"text,omitempty" bson:"text,omitempty"`
+			Type          string `json:"type" binding:"required"`
+			Text          string `json:"text,omitempty" bson:"text,omitempty"`
+			ParameterName string `json:"parameter_name,omitempty" bson:"parameter_name,omitempty"`
 
 			Image *struct {
 				Link string `json:"link,omitempty" bson:"link,omitempty"`
