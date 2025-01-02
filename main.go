@@ -1,6 +1,8 @@
 package main
 
 import (
+	"log"
+	"net/http"
 	"strings"
 	"whatsapp-sender/config"
 	"whatsapp-sender/constants"
@@ -13,7 +15,50 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 )
+
+// create a websocket server
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
+}
+
+func wsHandler(c *gin.Context) {
+	w := c.Writer
+	r := c.Request
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Println(err)
+		c.JSON(400, gin.H{
+			"message": "Error in upgrading connection " + err.Error(),
+		})
+		return
+	}
+
+	for {
+		msgType, msg, err := conn.ReadMessage()
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		if string(msg) == "ping" {
+			conn.WriteMessage(msgType, []byte("pong"))
+			continue
+		}
+
+		if string(msg) == "close" {
+			conn.Close()
+			return
+		}
+
+		conn.WriteMessage(msgType, msg)
+	}
+}
 
 func main() {
 	// Create a new instance of the server
@@ -37,6 +82,7 @@ func main() {
 	server.Use(cors.Default())
 
 	server.GET("/", handler.Home)
+	server.GET("/app-logger-ws", wsHandler)
 
 	templateRoutes := server.Group("/templates")
 	otpRoutes := server.Group("/otp")

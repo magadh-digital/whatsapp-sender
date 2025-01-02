@@ -34,6 +34,8 @@ type WhatsappTemplate struct {
 
 	Components []struct {
 		Type       string `json:"type" binding:"required"`
+		SubType    string `json:"sub_type,omitempty" bson:"sub_type,omitempty"`
+		Index      uint   `json:"index" bson:"index"`
 		Parameters []struct {
 			Type          string `json:"type" binding:"required"`
 			Text          string `json:"text,omitempty" bson:"text,omitempty"`
