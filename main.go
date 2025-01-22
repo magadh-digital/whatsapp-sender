@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/spidey52/go-helper/helper"
 )
 
 // create a websocket server
@@ -26,9 +28,34 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+type LogLevel string
+
+const (
+	Info  LogLevel = "info"
+	Error LogLevel = "error"
+	Debug LogLevel = "debug"
+)
+
+type Log struct {
+	Level     LogLevel `json:"level" bson:"level"`
+	Message   string   `json:"message" bson:"message"`
+	Timestamp string   `json:"timestamp" bson:"timestamp"`
+
+	Service string `json:"service" bson:"service"`
+}
+
 func wsHandler(c *gin.Context) {
 	w := c.Writer
 	r := c.Request
+
+	service := r.URL.Query().Get("service")
+
+	if service == "" {
+		c.JSON(400, gin.H{
+			"message": "Service is required",
+		})
+		return
+	}
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -56,7 +83,7 @@ func wsHandler(c *gin.Context) {
 			return
 		}
 
-		conn.WriteMessage(msgType, msg)
+		log.Println("Message received: ", string(msg))
 	}
 }
 
@@ -64,7 +91,7 @@ func main() {
 	// Create a new instance of the server
 
 	// Load environment variables
-	config.LoadEnv()
+	// config.LoadEnv()
 
 	// gin.SetMode(gin.ReleaseMode)
 
@@ -86,6 +113,7 @@ func main() {
 
 	templateRoutes := server.Group("/templates")
 	otpRoutes := server.Group("/otp")
+	constantRoutes := server.Group("/constants")
 
 	otpRoutes.POST("/send", handler.SendOTP)
 	otpRoutes.POST("/validate", handler.ValidateOtp)
@@ -151,6 +179,24 @@ func main() {
 
 	})
 
+	constantRoutes.GET("/bank-assign-types", func(ctx *gin.Context) {
+
+		bankAssignTypes, err := helper.FindMany[models.BankAssignType](models.BankAssignTypeModel(), nil)
+
+		if err != nil {
+			ctx.JSON(500, gin.H{
+				"error": err.Error(),
+			})
+			return
+		}
+
+		ctx.JSON(200, gin.H{
+			"message": "Bank assign types",
+			"data":    bankAssignTypes,
+		})
+	})
+
 	// Start the server on port 8080
-	server.Run(":8081")
+	port := fmt.Sprintf(":%s", config.GetEnvConfig().PORT)
+	server.Run(port)
 }

@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"time"
+	"whatsapp-sender/config"
 	"whatsapp-sender/db"
 
 	"github.com/gin-gonic/gin"
@@ -308,8 +308,8 @@ func SendMessage(template *WhatsappTemplate, phone string) error {
 
 	ioBody := bytes.NewReader(jsonBody)
 
-	token := os.Getenv("WHATSAPP_AUTH")
-	url := os.Getenv("WHATSAPP_URL")
+	token := config.GetEnvConfig().WHATSAPP_AUTH_TOKEN
+	url := config.GetEnvConfig().WHATSAPP_URL
 
 	req, err := http.NewRequest("POST", url, ioBody)
 
@@ -349,7 +349,8 @@ func SendMessage(template *WhatsappTemplate, phone string) error {
 		NewMessageLog(template.Name, payload, phone, MessageLogStatusFailed, bson.M{
 			"components": template.Components,
 		}).Create()
-		return fmt.Errorf(string(respBody))
+		fmt.Println("error in sending message", string(respBody))
+		return nil
 	}
 
 	NewMessageLog(template.Name, payload, phone, MessageLogStatusSuccess, bson.M{

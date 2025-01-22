@@ -15,7 +15,7 @@ var DB *mongo.Database
 func ConnectDB() {
 
 	// Set client options
-	clientOptions := options.Client().ApplyURI(config.MONGO_URI)
+	clientOptions := options.Client().ApplyURI(config.GetEnvConfig().MONGO_URI)
 
 	clientOptions.SetMaxPoolSize(100)
 	clientOptions.SetMaxConnIdleTime(10)
@@ -32,7 +32,7 @@ func ConnectDB() {
 		log.Fatal(err)
 	}
 
-	DB = client.Database(config.DB_NAME)
+	DB = client.Database(config.GetEnvConfig().DB_NAME)
 
 	log.Println("Connected to MongoDB!")
 
