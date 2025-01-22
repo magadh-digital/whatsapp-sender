@@ -106,7 +106,17 @@ func main() {
 	server := gin.Default()
 
 	// Enable CORS
-	server.Use(cors.Default())
+	server.Use(cors.New(cors.Config{
+		AllowOriginFunc: func(origin string) bool {
+			return true
+		},
+
+		AllowMethods: []string{"*"},
+
+		// appversion,authorization,content-type,service,
+		AllowHeaders:     []string{"*"},
+		AllowCredentials: true,
+	}))
 
 	server.GET("/", handler.Home)
 	server.GET("/app-logger-ws", wsHandler)
@@ -194,6 +204,26 @@ func main() {
 			"message": "Bank assign types",
 			"data":    bankAssignTypes,
 		})
+	})
+
+	constantRoutes.GET("/all", func(ctx *gin.Context) {
+
+		bankAssignTypes, err := helper.FindMany[models.BankAssignType](models.BankAssignTypeModel(), nil)
+
+		if err != nil {
+			ctx.JSON(500, gin.H{
+				"error": err.Error(),
+			})
+			return
+		}
+
+		ctx.JSON(200, gin.H{
+			"vendor_service":    constants.VendorServiceConstants,
+			"layout":            constants.LayoutConstants,
+			"pdf_report":        constants.PdfReportConstantsList,
+			"bank_assign_types": bankAssignTypes,
+		})
+
 	})
 
 	// Start the server on port 8080
