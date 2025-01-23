@@ -212,6 +212,7 @@ func main() {
 
 	constantRoutes.GET("/all", handler.GetAllConstants)
 
+
 	// Start the server on port 8080
 	port := fmt.Sprintf(":%s", config.GetEnvConfig().PORT)
 	server.Run(port)

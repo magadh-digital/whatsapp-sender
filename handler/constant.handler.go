@@ -174,6 +174,8 @@ func InsertHello() {
 			CreatedAt: time.Now(),
 		})
 
+		fmt.Println("Inserted", val)
+
 	}
 
 }
