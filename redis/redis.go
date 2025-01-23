@@ -14,6 +14,14 @@ func ConnectToRedis() {
 	RedisClient = GetRedisClient()
 }
 
+func DefaultRedisClient() *redis.Client {
+	if RedisClient == nil {
+		RedisClient = GetRedisClient()
+	}
+
+	return RedisClient
+}
+
 func GetRedisClient() *redis.Client {
 
 	rdb := redis.NewClient(&redis.Options{
@@ -27,6 +35,7 @@ func GetRedisClient() *redis.Client {
 		panic(err)
 	}
 
+	fmt.Println("Connected to Redis")
 	return rdb
 
 }

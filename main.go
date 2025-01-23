@@ -97,6 +97,8 @@ func main() {
 
 	db.ConnectDB()
 	redis.ConnectToRedis()
+	models.CreateConstantModelIndex()
+	// models.CreateLayoutConstant()
 
 	db.RegisterModels(constants.WhatsappTemplateCollection, constants.MessageLogCollection)
 
@@ -104,6 +106,8 @@ func main() {
 
 	// gin.SetMode(gin.ReleaseMode)
 	server := gin.Default()
+
+	gin.SetMode(gin.ReleaseMode)
 
 	// Enable CORS
 	server.Use(cors.New(cors.Config{
@@ -206,25 +210,7 @@ func main() {
 		})
 	})
 
-	constantRoutes.GET("/all", func(ctx *gin.Context) {
-
-		bankAssignTypes, err := helper.FindMany[models.BankAssignType](models.BankAssignTypeModel(), nil)
-
-		if err != nil {
-			ctx.JSON(500, gin.H{
-				"error": err.Error(),
-			})
-			return
-		}
-
-		ctx.JSON(200, gin.H{
-			"vendor_service":    constants.VendorServiceConstants,
-			"layout":            constants.LayoutConstants,
-			"pdf_report":        constants.PdfReportConstantsList,
-			"bank_assign_types": bankAssignTypes,
-		})
-
-	})
+	constantRoutes.GET("/all", handler.GetAllConstants)
 
 	// Start the server on port 8080
 	port := fmt.Sprintf(":%s", config.GetEnvConfig().PORT)

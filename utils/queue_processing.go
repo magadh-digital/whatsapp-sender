@@ -37,7 +37,7 @@ func QueueMessage(payload *models.WhatsappTemplate, phone []string) {
 	}
 
 	if len(payloadList) > 0 {
-		result := redis.RedisClient.RPush(context.Background(), redis.WhatsappMessageQueue, payloadList).Val()
+		result := redis.RedisClient.RPush(context.Background(), redis.RedisKeys.WhatsappMessageQueue, payloadList).Val()
 		fmt.Println("Total message requested ", len(payloadList), "Total message queued", result)
 	}
 
@@ -70,7 +70,7 @@ func QueueProcessing() {
 		defer client.Close()
 
 		for {
-			result := client.BLPop(client.Context(), 0, redis.WhatsappMessageQueue).Val()
+			result := client.BLPop(client.Context(), 0, redis.RedisKeys.WhatsappMessageQueue).Val()
 
 			value := result[1]
 
