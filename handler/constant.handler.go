@@ -106,6 +106,8 @@ func GetAllConstants(ctx *gin.Context) {
 		result[key] = value
 	}
 
+	result["app_pages"] = result["app_pages_list"]
+
 	strData, _ := json.Marshal(result)
 
 	val, err := redis.GetRedisClient().Set(context.TODO(), redis.RedisKeys.ConstantCache, string(strData), time.Minute).Result()
@@ -121,61 +123,5 @@ func GetAllConstants(ctx *gin.Context) {
 	fmt.Println("Data cached", val, "value")
 
 	ctx.JSON(200, result)
-
-}
-
-func InsertHello() {
-	// 	{
-	//   "BANKING": [
-	//     {"group": "BANKING", "page": "STORE", "children": []},
-	//     {"group": "BANKING", "page": "PAYMENT_REQUEST", "children": []},
-	//     {"group": "BANKING", "page": "BANKING_REPORT", "children": []},
-	//     {"group": "BANKING", "page": "PURCHASE_ORDER", "children": []},
-	//     {"group": "BANKING", "page": "BANKING_BENIFICIARY", "children": []},
-	//     {"group": "BANKING", "page": "RAW_MATERIAL", "children": []}
-	//   ],
-	//   "MAGADH": [
-	//     {"group": "MAGADH", "page": "PARTNER", "children": []},
-	//     {"group": "MAGADH", "page": "RATE_CHANGE", "children": []},
-	//     {"group": "MAGADH", "page": "ORDER", "children": []},
-	//     {"group": "MAGADH", "page": "RATE_IMAGE", "children": []},
-	//     {"group": "MAGADH", "page": "MEETING", "children": []},
-	//     {"group": "MAGADH", "page": "SAUDA", "children": []},
-	//     {"group": "MAGADH", "page": "USER_ORDER", "children": []},
-	//     {"group": "MAGADH", "page": "ADD_VISITOR", "children": []},
-	//     {"group": "MAGADH", "page": "HELP_DESK", "children": []},
-	//   ]
-	// }
-
-	vals := []string{
-		"BANKING:STORE",
-		"BANKING:PAYMENT_REQUEST",
-		"BANKING:BANKING_REPORT",
-		"BANKING:PURCHASE_ORDER",
-		"BANKING:BANKING_BENIFICIARY",
-		"BANKING:RAW_MATERIAL",
-		"MAGADH:PARTNER",
-		"MAGADH:RATE_CHANGE",
-		"MAGADH:ORDER",
-		"MAGADH:RATE_IMAGE",
-		"MAGADH:MEETING",
-		"MAGADH:SAUDA",
-		"MAGADH:USER_ORDER",
-		"MAGADH:ADD_VISITOR",
-		"MAGADH:HELP_DESK",
-	}
-
-	for idx, val := range vals {
-
-		models.ConstantsModel().InsertOne(context.Background(), models.Constants{
-			Title:     val,
-			Category:  "APP_PAGES",
-			SortValue: idx + 1,
-			CreatedAt: time.Now(),
-		})
-
-		fmt.Println("Inserted", val)
-
-	}
 
 }
