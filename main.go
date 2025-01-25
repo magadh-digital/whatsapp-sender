@@ -195,6 +195,10 @@ func main() {
 	constantRoutes.GET("/bank-assign-types", handler.GetBankAssignTypes)
 	constantRoutes.GET("/all", handler.GetAllConstants)
 
+	constantRoutes.POST("/", handler.CreateConstant)
+	constantRoutes.POST("/bank-assign-types", handler.CreateConstant)
+	constantRoutes.DELETE("/:id", handler.DeleteConstant)
+
 	// Start the server on port 8080
 	port := fmt.Sprintf(":%s", config.GetEnvConfig().PORT)
 	server.Run(port)

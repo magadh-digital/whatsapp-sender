@@ -15,6 +15,10 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
+func clearCache() {
+	redis.GetRedisClient().Del(context.Background(), redis.RedisKeys.ConstantCache)
+}
+
 func CreateConstant(ctx *gin.Context) {
 
 	type ConstantCreateDto struct {
@@ -50,8 +54,59 @@ func CreateConstant(ctx *gin.Context) {
 		return
 	}
 
+	clearCache()
+
 	ctx.JSON(200, gin.H{
 		"message": "Constant created successfully",
+	})
+}
+
+func CreateBankConstant(ctx *gin.Context) {
+
+	type BankAssignTypeCreateDto struct {
+		Title                string `json:"title" binding:"required"`
+		Value                string `json:"value" binding:"required"`
+		IsPoVisible          bool   `json:"is_po_visible" binding:"required"`
+		IsBeneficiaryVisible bool   `json:"is_beneficiary_visible" binding:"required"`
+		Credit               bool   `json:"credit" binding:"required"`
+		Debit                bool   `json:"debit" binding:"required"`
+		Description          string `json:"description" binding:"required"`
+	}
+
+	var body BankAssignTypeCreateDto
+
+	err := ctx.ShouldBindJSON(&body)
+
+	if err != nil {
+		ctx.JSON(400, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	bankAssignType := models.BankAssignType{
+		Title:                body.Title,
+		Value:                body.Value,
+		IsPoVisible:          body.IsPoVisible,
+		IsBeneficiaryVisible: body.IsBeneficiaryVisible,
+		Credit:               body.Credit,
+		Debit:                body.Debit,
+		Description:          body.Description,
+	}
+
+	_, err = models.BankAssignTypeModel().InsertOne(context.Background(), bankAssignType)
+
+	if err != nil {
+		ctx.JSON(500, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	clearCache()
+
+	ctx.JSON(200, gin.H{
+		"message": "Bank Assign Type created successfully",
 	})
 }
 
@@ -178,4 +233,23 @@ func GetBankAssignTypes(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, bankAssignTypes)
+}
+
+func DeleteConstant(ctx *gin.Context) {
+	id := ctx.Param("id")
+
+	_, err := models.ConstantsModel().DeleteOne(context.Background(), bson.M{"value": id})
+
+	if err != nil {
+		ctx.JSON(500, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	clearCache()
+
+	ctx.JSON(200, gin.H{
+		"message": "Constant deleted successfully",
+	})
 }
