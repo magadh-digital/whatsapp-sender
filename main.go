@@ -17,7 +17,6 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/spidey52/go-helper/helper"
 )
 
 // create a websocket server
@@ -193,25 +192,8 @@ func main() {
 
 	})
 
-	constantRoutes.GET("/bank-assign-types", func(ctx *gin.Context) {
-
-		bankAssignTypes, err := helper.FindMany[models.BankAssignType](models.BankAssignTypeModel(), nil)
-
-		if err != nil {
-			ctx.JSON(500, gin.H{
-				"error": err.Error(),
-			})
-			return
-		}
-
-		ctx.JSON(200, gin.H{
-			"message": "Bank assign types",
-			"data":    bankAssignTypes,
-		})
-	})
-
+	constantRoutes.GET("/bank-assign-types", handler.GetBankAssignTypes)
 	constantRoutes.GET("/all", handler.GetAllConstants)
-
 
 	// Start the server on port 8080
 	port := fmt.Sprintf(":%s", config.GetEnvConfig().PORT)

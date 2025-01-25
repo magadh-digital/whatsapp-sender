@@ -15,6 +15,46 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
+func CreateConstant(ctx *gin.Context) {
+
+	type ConstantCreateDto struct {
+		Title     string `json:"title" binding:"required"`
+		Category  string `json:"category" binding:"required"`
+		SortValue int    `json:"sort_value" binding:"required"`
+	}
+
+	var body ConstantCreateDto
+
+	err := ctx.ShouldBindJSON(&body)
+
+	if err != nil {
+		ctx.JSON(400, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	constant := models.Constants{
+		Title:     body.Title,
+		Category:  body.Category,
+		SortValue: body.SortValue,
+		CreatedAt: time.Now(),
+	}
+
+	_, err = models.ConstantsModel().InsertOne(context.Background(), constant)
+
+	if err != nil {
+		ctx.JSON(500, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	ctx.JSON(200, gin.H{
+		"message": "Constant created successfully",
+	})
+}
+
 func GetAllConstants(ctx *gin.Context) {
 	// Get all constants
 	cached := redis.GetRedisClient().Get(context.Background(), redis.RedisKeys.ConstantCache).Val()
@@ -124,4 +164,18 @@ func GetAllConstants(ctx *gin.Context) {
 
 	ctx.JSON(200, result)
 
+}
+
+func GetBankAssignTypes(ctx *gin.Context) {
+	// Get all constants
+	bankAssignTypes, err := helper.FindMany[models.BankAssignType](models.BankAssignTypeModel(), nil)
+
+	if err != nil {
+		ctx.JSON(500, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	ctx.JSON(200, bankAssignTypes)
 }
