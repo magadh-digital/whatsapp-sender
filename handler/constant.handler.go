@@ -16,7 +16,7 @@ import (
 )
 
 func clearCache() {
-	redis.GetRedisClient().Del(context.Background(), redis.RedisKeys.ConstantCache)
+	redis.DefaultRedisClient().Del(context.Background(), redis.RedisKeys.ConstantCache)
 }
 
 func CreateConstant(ctx *gin.Context) {
@@ -112,7 +112,7 @@ func CreateBankConstant(ctx *gin.Context) {
 
 func GetAllConstants(ctx *gin.Context) {
 	// Get all constants
-	cached := redis.GetRedisClient().Get(context.Background(), redis.RedisKeys.ConstantCache).Val()
+	cached := redis.DefaultRedisClient().Get(context.Background(), redis.RedisKeys.ConstantCache).Val()
 
 	fmt.Println("Data fetched from cache", cached)
 
@@ -205,7 +205,7 @@ func GetAllConstants(ctx *gin.Context) {
 
 	strData, _ := json.Marshal(result)
 
-	val, err := redis.GetRedisClient().Set(context.TODO(), redis.RedisKeys.ConstantCache, string(strData), time.Minute).Result()
+	val, err := redis.DefaultRedisClient().Set(context.TODO(), redis.RedisKeys.ConstantCache, string(strData), time.Minute).Result()
 
 	if err != nil {
 		fmt.Println("Error in caching data", err)
