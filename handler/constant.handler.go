@@ -114,7 +114,7 @@ func GetAllConstants(ctx *gin.Context) {
 	// Get all constants
 	cached := redis.DefaultRedisClient().Get(context.Background(), redis.RedisKeys.ConstantCache).Val()
 
-	fmt.Println("Data fetched from cache", cached)
+	// fmt.Println("Data fetched from cache", cached)
 
 	if cached != "" {
 		var parsedResult map[string]interface{}
@@ -205,7 +205,7 @@ func GetAllConstants(ctx *gin.Context) {
 
 	strData, _ := json.Marshal(result)
 
-	val, err := redis.DefaultRedisClient().Set(context.TODO(), redis.RedisKeys.ConstantCache, string(strData), time.Minute).Result()
+	_, err = redis.DefaultRedisClient().Set(context.TODO(), redis.RedisKeys.ConstantCache, string(strData), time.Minute).Result()
 
 	if err != nil {
 		fmt.Println("Error in caching data", err)
@@ -214,8 +214,6 @@ func GetAllConstants(ctx *gin.Context) {
 		})
 		return
 	}
-
-	fmt.Println("Data cached", val, "value")
 
 	ctx.JSON(200, result)
 
