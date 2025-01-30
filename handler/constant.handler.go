@@ -175,17 +175,18 @@ func GetAllConstants(ctx *gin.Context) {
 
 	cursor.All(context.Background(), &groupedData)
 
-	groupedDataMap := make(map[string]map[string]string)
+	// groupedDataMap := make(map[string]map[string]string)
 	groupedDataArray := make(map[string][]string)
 
 	for _, data := range groupedData {
 		key := strings.ToLower(data.ID)
-		groupedDataMap[key] = make(map[string]string)
-		groupedDataArray[key+"_list"] = data.Data
+		groupedDataArray[key] = data.Data
 
-		for _, value := range data.Data {
-			groupedDataMap[key][value] = value
-		}
+		// groupedDataMap[key] = make(map[string]string)
+
+		// for _, value := range data.Data {
+		// 	groupedDataMap[key][value] = value
+		// }
 	}
 
 	result := gin.H{
@@ -193,15 +194,15 @@ func GetAllConstants(ctx *gin.Context) {
 		"bank_assign_types": bankAssignTypes,
 	}
 
-	for key, value := range groupedDataMap {
-		result[key] = value
-	}
+	// for key, value := range groupedDataMap {
+	// 	result[key] = value
+	// }
 
 	for key, value := range groupedDataArray {
 		result[key] = value
 	}
 
-	result["app_pages"] = result["app_pages_list"]
+	// result["app_pages"] = result["app_pages_list"]
 
 	strData, _ := json.Marshal(result)
 
