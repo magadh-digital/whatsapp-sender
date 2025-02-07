@@ -196,7 +196,11 @@ func main() {
 	constantRoutes.GET("/all", handler.GetAllConstants)
 
 	constantRoutes.POST("/", handler.CreateConstant)
+
 	constantRoutes.POST("/bank-assign-types", handler.CreateBankConstant)
+	constantRoutes.PATCH("/bank-assign-types/:id", handler.UpdateBankConstant)
+	constantRoutes.DELETE("/bank-assign-types/:id", handler.DeleteBankConstant)
+
 	constantRoutes.DELETE("/:id", handler.DeleteConstant)
 
 	// Start the server on port 8080

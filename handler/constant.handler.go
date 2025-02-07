@@ -15,6 +15,25 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
+func RemoveNilFields(data interface{}) interface{} {
+	// Remove nil fields
+	var dataMap map[string]interface{}
+
+	dataJson, _ := json.Marshal(data)
+
+	json.Unmarshal(dataJson, &dataMap)
+
+	for key, value := range dataMap {
+		if value == nil {
+			delete(dataMap, key)
+		}
+	}
+
+	dataJson, _ = json.Marshal(dataMap)
+
+	return dataJson
+}
+
 func clearCache() {
 	redis.DefaultRedisClient().Del(context.Background(), redis.RedisKeys.ConstantCache)
 }
@@ -58,6 +77,76 @@ func CreateConstant(ctx *gin.Context) {
 
 	ctx.JSON(200, gin.H{
 		"message": "Constant created successfully",
+	})
+}
+
+func UpdateBankConstant(ctx *gin.Context) {
+
+	type BankAssignTypeUpdateDto struct {
+		Title                *string `json:"title"`
+		Value                *string `json:"value"`
+		IsPoVisible          *bool   `json:"is_po_visible"`
+		IsBeneficiaryVisible *bool   `json:"is_beneficiary_visible"`
+		IsSmsRequired        *bool   `json:"is_sms_required"`
+		IsUtrRequired        *bool   `json:"is_utr_required"`
+		Credit               *bool   `json:"credit"`
+		Debit                *bool   `json:"debit"`
+		Description          *string `json:"description"`
+	}
+
+	var body BankAssignTypeUpdateDto
+
+	err := ctx.ShouldBindJSON(&body)
+
+	if err != nil {
+		ctx.JSON(400, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	id := ctx.Param("id")
+
+	body = RemoveNilFields(body).(BankAssignTypeUpdateDto)
+
+	filter := bson.M{"_id": helper.ToObjectId(id)}
+
+	_, err = models.BankAssignTypeModel().UpdateOne(context.Background(), filter, bson.M{
+		"$set": RemoveNilFields(body),
+	})
+
+	if err != nil {
+		ctx.JSON(500, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	clearCache()
+
+	ctx.JSON(200, gin.H{
+		"message": "Bank Assign Type updated successfully",
+	})
+}
+
+func DeleteBankConstant(ctx *gin.Context) {
+	id := ctx.Param("id")
+
+	objectId := helper.ToObjectId(id)
+
+	_, err := models.BankAssignTypeModel().DeleteOne(context.Background(), bson.M{"_id": objectId})
+
+	if err != nil {
+		ctx.JSON(500, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	clearCache()
+
+	ctx.JSON(200, gin.H{
+		"message": "Bank Assign Type deleted successfully",
 	})
 }
 
@@ -237,7 +326,7 @@ func GetBankAssignTypes(ctx *gin.Context) {
 func DeleteConstant(ctx *gin.Context) {
 	id := ctx.Param("id")
 
-	_, err := models.ConstantsModel().DeleteOne(context.Background(), bson.M{"value": id})
+	_, err := models.ConstantsModel().DeleteOne(context.Background(), bson.M{"title": id})
 
 	if err != nil {
 		ctx.JSON(500, gin.H{
