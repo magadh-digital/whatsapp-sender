@@ -17,8 +17,8 @@ func ConnectDB() {
 	// Set client options
 	clientOptions := options.Client().ApplyURI(config.GetEnvConfig().MONGO_URI)
 
-	clientOptions.SetMaxPoolSize(100)
-	clientOptions.SetMaxConnIdleTime(10)
+	// clientOptions.SetMaxPoolSize(100)
+	// clientOptions.SetMaxConnIdleTime(10)
 
 	// Connect to MongoDB
 	client, err := mongo.Connect(context.Background(), clientOptions)
