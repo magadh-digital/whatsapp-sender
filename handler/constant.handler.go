@@ -295,7 +295,7 @@ func GetAllConstants(ctx *gin.Context) {
 
 	strData, _ := json.Marshal(result)
 
-	_, err = redis.DefaultRedisClient().Set(context.TODO(), redis.RedisKeys.ConstantCache, string(strData), time.Minute).Result()
+	_, err = redis.DefaultRedisClient().Set(context.TODO(), redis.RedisKeys.ConstantCache, string(strData), time.Hour).Result()
 
 	if err != nil {
 		fmt.Println("Error in caching data", err)

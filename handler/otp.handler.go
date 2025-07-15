@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"strings"
 	"whatsapp-sender/utils"
 
 	"github.com/gin-gonic/gin"
@@ -29,7 +30,9 @@ func SendOTP(c *gin.Context) {
 		return
 	}
 
-	otp := utils.GenerateOTP(data.Phone, data.Service, data.Length)
+	phoneList := strings.Split(data.Phone, ",")
+
+	otp := utils.GenerateOTP(phoneList, data.Service, data.Length)
 
 	err := utils.CallOtpApi(data.Phone, data.Service, otp)
 

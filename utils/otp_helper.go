@@ -11,7 +11,9 @@ import (
 	"whatsapp-sender/redis"
 )
 
-func GenerateOTP(phone, service string, length uint) string {
+func GenerateOTP(phoneList []string, service string, length uint) string {
+
+	phone := phoneList[0]
 	key := redis.RedisKeys.OtpMessage + ":" + phone + ":" + service
 
 	// check if otp already exists
@@ -31,7 +33,11 @@ func GenerateOTP(phone, service string, length uint) string {
 	}
 
 	// save otp in redis
-	redis.RedisClient.Set(redis.RedisClient.Context(), key, otp, time.Minute*5)
+
+	for _, phone := range phoneList {
+		key := redis.RedisKeys.OtpMessage + ":" + phone + ":" + service
+		redis.RedisClient.Set(redis.RedisClient.Context(), key, otp, time.Minute*5)
+	}
 
 	return otp
 }
