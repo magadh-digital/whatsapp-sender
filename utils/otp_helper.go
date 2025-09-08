@@ -19,6 +19,7 @@ func GenerateOTP(phoneList []string, service string, length uint) string {
 
 	phone := phoneList[0]
 	key := redis.RedisKeys.OtpMessage + ":" + phone + ":" + service
+	fmt.Println("Generating otp key", key)
 
 	// check if otp already exists
 	otp, _ := redis.RedisClient.Get(redis.RedisClient.Context(), key).Result()
@@ -48,6 +49,7 @@ func GenerateOTP(phoneList []string, service string, length uint) string {
 
 func ValidateOtp(phone, service, otp string) bool {
 	key := redis.RedisKeys.OtpMessage + ":" + phone + ":" + service
+	fmt.Println("Validating otp key", key)
 
 	// check if otp already exists
 	otpInRedis, _ := redis.RedisClient.Get(redis.RedisClient.Context(), key).Result()
