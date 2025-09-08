@@ -3,10 +3,14 @@ package utils
 import (
 	"crypto/rand"
 	"fmt"
+	"io"
 	"log"
 	"math/big"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
+	"whatsapp-sender/config"
 	"whatsapp-sender/models"
 	"whatsapp-sender/redis"
 )
@@ -67,36 +71,62 @@ const (
 	SMS_SENDER = "MGDHin"
 )
 
+// data.append('Body', 'Dear User,  OTP to log in is 1234, Or use this link to log into app Magadh APP Thank You for using online services.  Magadh Industries');
+
+// func generateMessage(otp, service string) string {
+// 	return "Dear User,\n\nOTP to log in is " + otp + ", Or use this link to log into app " + service + "\nThank You for using online services.\n\nMagadh Industries"
+// }
+
 func generateMessage(otp, service string) string {
-	return "Dear User,\n\nOTP to log in is " + otp + ", Or use this link to log into app " + service + "\nThank You for using online services.\n\nMagadh Industries"
+	return "Dear User, OTP to log in is " + otp + ", Or use this link to log into app Magadh APP Thank You for using online services. Magadh Industries"
+
 }
+
+var (
+	SMS_API_KEY   = config.GetEnvConfig().SMS_API_KEY
+	SMS_API_TOKEN = config.GetEnvConfig().SMS_API_TOKEN
+	SMS_SUBDOMAIN = config.GetEnvConfig().SMS_SUBDOMAIN
+	SMS_SID       = config.GetEnvConfig().SMS_SID
+)
 
 func CallOtpApi(phone, service, otp string) error {
 	message := generateMessage(otp, service)
 
-	query := map[string]string{
-		"apikey":  SMS_API,
-		"message": message,
-		"sender":  SMS_SENDER,
-		"numbers": phone,
-	}
+	endpoint := fmt.Sprintf("https://%s/v1/Accounts/%s/Sms/send", SMS_SUBDOMAIN, SMS_SID)
 
-	req := NewApiRequest().SetUrl("https://api.textlocal.in/send/").SetMethod(http.MethodPost)
+	// form data
+	data := url.Values{}
+	data.Set("From", SMS_SENDER)
+	data.Set("To", phone)
+	data.Set("Body", message)
 
-	for key, value := range query {
-		req.SetQuery(key, value)
-	}
-
-	res, err := req.Send()
-
+	req, err := http.NewRequest("POST", endpoint, strings.NewReader(data.Encode()))
 	if err != nil {
 		fmt.Println("Error in sending otp", err)
 		return err
 	}
 
-	log.Println("Response from otp api", res.JsonBody)
+	req.SetBasicAuth(SMS_API_KEY, SMS_API_TOKEN)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	client := &http.Client{}
+	res, err := client.Do(req)
+	if err != nil {
+		fmt.Println("Error in sending otp", err)
+		return err
+	}
+	defer res.Body.Close()
+	// log response
+	log.Println("Response from otp api", res.Body)
 
-	models.SaveInDb(phone, res.JsonBody, "success")
+	responseBody, _ := io.ReadAll(res.Body)
+	fmt.Println(string(responseBody))
+
+	// save in db
+	err = models.SaveInDb(phone, string(responseBody), "success")
+	if err != nil {
+		fmt.Println("error in saving in db", err)
+	}
+	fmt.Println("saved in db")
 
 	return nil
 }

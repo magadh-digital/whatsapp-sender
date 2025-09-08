@@ -14,6 +14,10 @@ type EnvConfig struct {
 	DB_NAME             string `json:"db_name"`
 	REDIS_URI           string `json:"redis_uri"`
 	PORT                string `json:"port"`
+	SMS_API_KEY             string `json:"sms_api"`
+	SMS_API_TOKEN          string `json:"sms_api_token"`
+	SMS_SUBDOMAIN			 string `json:"sms_subdomain"`
+	SMS_SID				 string `json:"sms_sid"`			 
 }
 
 var envConfig EnvConfig = EnvConfig{}
@@ -29,6 +33,11 @@ func GetEnvConfig() EnvConfig {
 			DB_NAME:             os.Getenv("DB_NAME"),
 			REDIS_URI:           os.Getenv("REDIS_URI"),
 			PORT:                os.Getenv("PORT"),
+			SMS_API_KEY:             os.Getenv("SMS_API_KEY"),
+			SMS_API_TOKEN:       os.Getenv("SMS_API_TOKEN"),
+			SMS_SUBDOMAIN:       os.Getenv("SMS_SUBDOMAIN"),
+			SMS_SID:            os.Getenv("SMS_SID"),
+
 		}
 
 		var envs = []string{
@@ -38,11 +47,16 @@ func GetEnvConfig() EnvConfig {
 			envConfig.DB_NAME,
 			envConfig.REDIS_URI,
 			envConfig.PORT,
+			envConfig.SMS_API_KEY,
+			envConfig.SMS_API_TOKEN,
+			envConfig.SMS_SUBDOMAIN,
+			envConfig.SMS_SID,
+
 		}
 
-		for _, env := range envs {
+		for i, env := range envs {
 			if env == "" {
-				log.Fatal("Environment variable not set", env)
+				log.Fatal("Environment variable not set", i)
 			}
 		}
 

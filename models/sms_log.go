@@ -12,12 +12,12 @@ import (
 type SmsLog struct {
 	ID           primitive.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
 	Phone        string             `json:"phone" bson:"phone"`
-	ResponseBody interface{}        `json:"response_body" bson:"response_body"`
+	ResponseBody string             `json:"response_body" bson:"response_body"`
 	CreatedAt    time.Time          `json:"created_at" bson:"created_at"`
 	Status       string             `json:"status" bson:"status"`
 }
 
-func SaveInDb(phone string, responseBody interface{}, status string) error {
+func SaveInDb(phone string, responseBody string, status string) error {
 	val := &SmsLog{
 		Phone:        phone,
 		ResponseBody: responseBody,
