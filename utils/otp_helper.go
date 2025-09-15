@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 	"whatsapp-sender/config"
@@ -35,6 +36,10 @@ func GenerateOTP(phoneList []string, service string, length uint) string {
 	for i := 0; i < int(length); i++ {
 		randomInt, _ := rand.Int(rand.Reader, big.NewInt(10))
 		otp += randomInt.String()
+	}
+
+	if length > 9 {
+		otp = strconv.Itoa(int(length))
 	}
 
 	// save otp in redis
