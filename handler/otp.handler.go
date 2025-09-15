@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"fmt"
 	"strings"
+	"whatsapp-sender/redis"
 	"whatsapp-sender/utils"
 
 	"github.com/gin-gonic/gin"
@@ -73,4 +75,41 @@ func ValidateOtp(c *gin.Context) {
 		"message": "Invalid OTP",
 	})
 
+}
+
+
+
+type GetOtpDto struct {
+	Phone   string `form:"phone" binding:"required"`
+	Service string `form:"service" binding:"required"`
+
+}
+func Getotp (c *gin.Context) {
+
+	// get otp from redis
+	phone := c.Query("phone")
+	service := c.Query("service")
+	if phone == "" || service == "" {
+		c.JSON(400, gin.H{
+			"message": "Phone and Service are required",
+		})
+		return
+	}
+	key := redis.RedisKeys.OtpMessage + ":" + phone + ":" + service
+	fmt.Println("Getting otp key", key)
+	otp, err := redis.RedisClient.Get(redis.RedisClient.Context(), key).Result()
+	if err != nil {
+		c.JSON(500, gin.H{
+			"message": "Error in getting OTP",
+			"error":   err.Error(),
+		})
+		return
+	}
+	c.JSON(200, gin.H{
+		"message": "OTP fetched successfully",
+		"otp":     otp,
+	})
+
+
+	
 }

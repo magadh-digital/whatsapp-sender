@@ -133,6 +133,7 @@ func main() {
 
 	otpRoutes.POST("/send", handler.SendOTP)
 	otpRoutes.POST("/validate", handler.ValidateOtp)
+	otpRoutes.GET("/view", handler.Getotp)
 
 	server.GET("/message-logs", handler.ListMessageLog)
 
