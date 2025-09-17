@@ -16,6 +16,7 @@ type BankAssignType struct {
 	Credit               bool   `json:"credit" bson:"credit"`
 	Debit                bool   `json:"debit" bson:"debit"`
 	Description          string `json:"description" bson:"description"`
+	Group                string `json:"group" bson:"group"`
 }
 
 func BankAssignTypeModel() *mongo.Collection {
