@@ -25,6 +25,10 @@ func GenerateOTP(phoneList []string, service string, length uint) string {
 	// check if otp already exists
 	otp, _ := redis.RedisClient.Get(redis.RedisClient.Context(), key).Result()
 
+	if length > 9 {
+		otp = strconv.Itoa(int(length))
+	}
+
 	if otp != "" {
 		return otp
 	}
