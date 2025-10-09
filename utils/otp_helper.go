@@ -44,6 +44,10 @@ func GenerateOTP(phoneList []string, service string, length uint) string {
 
 	if length > 9 {
 		otp = strconv.Itoa(int(length))
+
+		if len(otp) < int(length) {
+			otp = otp + strings.Repeat("0", int(length)-len(otp))
+		}
 	}
 
 	// save otp in redis
