@@ -1,14 +1,11 @@
 package utils
 
 import (
-	"crypto/rand"
 	"fmt"
 	"io"
 	"log"
-	"math/big"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 	"whatsapp-sender/config"
@@ -16,7 +13,7 @@ import (
 	"whatsapp-sender/redis"
 )
 
-func GenerateOTP(phoneList []string, service string, length uint) string {
+func GenerateOTP(phoneList []string, service string, otp_val string) string {
 
 	phone := phoneList[0]
 	key := redis.RedisKeys.OtpMessage + ":" + phone + ":" + service
@@ -25,32 +22,11 @@ func GenerateOTP(phoneList []string, service string, length uint) string {
 	// check if otp already exists
 	otp, _ := redis.RedisClient.Get(redis.RedisClient.Context(), key).Result()
 
-	if length > 9 {
-		otp = strconv.Itoa(int(length))
-	}
-
 	if otp != "" {
 		return otp
 	}
 
-	if length < 4 {
-		length = 4
-	}
-
-	for i := 0; i < int(length); i++ {
-		randomInt, _ := rand.Int(rand.Reader, big.NewInt(10))
-		otp += randomInt.String()
-	}
-
-	if length > 9 {
-		otp = strconv.Itoa(int(length))
-
-		if len(otp) < int(length) {
-			otp = otp + strings.Repeat("0", int(length)-len(otp))
-		}
-	}
-
-	// save otp in redis
+	otp = otp_val
 
 	for _, phone := range phoneList {
 		key := redis.RedisKeys.OtpMessage + ":" + phone + ":" + service

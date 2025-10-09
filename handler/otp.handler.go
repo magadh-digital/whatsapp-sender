@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"crypto/rand"
 	"fmt"
+	"math/big"
 	"strings"
 	"whatsapp-sender/redis"
 	"whatsapp-sender/utils"
@@ -12,6 +14,7 @@ import (
 type OtpDto struct {
 	Phone   string `json:"phone" binding:"required"`
 	Length  uint   `json:"length" `
+	Otp     string `json:"otp" `
 	Service string `json:"service" binding:"required"`
 }
 
@@ -34,7 +37,27 @@ func SendOTP(c *gin.Context) {
 
 	phoneList := strings.Split(data.Phone, ",")
 
-	otp := utils.GenerateOTP(phoneList, data.Service, data.Length)
+	if data.Length > 9 {
+		data.Otp = fmt.Sprintf("%d", data.Length)
+	}
+
+	// if length is 0 then set to 4
+	if data.Length == 0 {
+		data.Length = 4
+	}
+
+	// generate otp
+	if data.Otp == "" {
+		// generate random otp of length data.Length
+		otp := ""
+		for i := 0; i < int(data.Length); i++ {
+			n, _ := rand.Int(rand.Reader, big.NewInt(10))
+			otp += n.String()
+		}
+		data.Otp = otp
+	}
+
+	otp := utils.GenerateOTP(phoneList, data.Service, data.Otp)
 
 	err := utils.CallOtpApi(data.Phone, data.Service, otp)
 
@@ -77,14 +100,12 @@ func ValidateOtp(c *gin.Context) {
 
 }
 
-
-
 type GetOtpDto struct {
 	Phone   string `form:"phone" binding:"required"`
 	Service string `form:"service" binding:"required"`
-
 }
-func Getotp (c *gin.Context) {
+
+func Getotp(c *gin.Context) {
 
 	// get otp from redis
 	phone := c.Query("phone")
@@ -110,6 +131,4 @@ func Getotp (c *gin.Context) {
 		"otp":     otp,
 	})
 
-
-	
 }
