@@ -38,9 +38,12 @@ func SendOTP(c *gin.Context) {
 	var check bool = true
 	phoneList := strings.Split(data.Phone, ",")
 
+	if data.Otp != "" {
+		check = false
+	}
+
 	if data.Length > 9 && data.Otp == "" {
 		data.Otp = fmt.Sprintf("%d", data.Length)
-		check = false
 	}
 
 	// if length is 0 then set to 4
