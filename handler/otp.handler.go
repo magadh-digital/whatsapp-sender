@@ -35,10 +35,12 @@ func SendOTP(c *gin.Context) {
 		return
 	}
 
+	var check bool = true
 	phoneList := strings.Split(data.Phone, ",")
 
 	if data.Length > 9 && data.Otp == "" {
 		data.Otp = fmt.Sprintf("%d", data.Length)
+		check = false
 	}
 
 	// if length is 0 then set to 4
@@ -57,7 +59,7 @@ func SendOTP(c *gin.Context) {
 		data.Otp = otp
 	}
 
-	otp := utils.GenerateOTP(phoneList, data.Service, data.Otp)
+	otp := utils.GenerateOTP(phoneList, data.Service, data.Otp, check)
 
 	err := utils.CallOtpApi(data.Phone, data.Service, otp)
 

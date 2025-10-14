@@ -13,7 +13,7 @@ import (
 	"whatsapp-sender/redis"
 )
 
-func GenerateOTP(phoneList []string, service string, otp_val string) string {
+func GenerateOTP(phoneList []string, service string, otp_val string, check bool) string {
 
 	phone := phoneList[0]
 	key := redis.RedisKeys.OtpMessage + ":" + phone + ":" + service
@@ -22,7 +22,7 @@ func GenerateOTP(phoneList []string, service string, otp_val string) string {
 	// check if otp already exists
 	otp, _ := redis.RedisClient.Get(redis.RedisClient.Context(), key).Result()
 
-	if otp != "" {
+	if otp != "" && check {
 		return otp
 	}
 
