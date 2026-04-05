@@ -46,6 +46,7 @@ type WhatsappTemplate struct {
 			} `json:"image,omitempty" bson:"image,omitempty"`
 			Video *struct {
 				ID string `json:"id,omitempty" bson:"id,omitempty"`
+				Link string `json:"link,omitempty" bson:"link,omitempty"`
 
 			} `json:"video,omitempty" bson:"video,omitempty"`
 		} `json:"parameters"`
