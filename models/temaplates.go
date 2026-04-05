@@ -45,9 +45,8 @@ type WhatsappTemplate struct {
 				Link string `json:"link,omitempty" bson:"link,omitempty"`
 			} `json:"image,omitempty" bson:"image,omitempty"`
 			Video *struct {
-				ID string `json:"id,omitempty" bson:"id,omitempty"`
+				ID   string `json:"id,omitempty" bson:"id,omitempty"`
 				Link string `json:"link,omitempty" bson:"link,omitempty"`
-
 			} `json:"video,omitempty" bson:"video,omitempty"`
 		} `json:"parameters"`
 	} `json:"components"`
@@ -117,6 +116,15 @@ func (w *WhatsappTemplate) Validate() error {
 				// if parameter.Image.Link == "" {
 				// 	return fmt.Errorf("image link is empty")
 				// }
+
+			}
+			if parameter.Type == "video" {
+				if parameter.Video == nil {
+					return fmt.Errorf("video is null")
+				}
+				if parameter.Video.ID == "" && parameter.Video.Link == "" {
+					return fmt.Errorf("video id/link is empty")
+				}
 			}
 
 		}
@@ -241,6 +249,13 @@ func GenerateWhatsappMessage(template *WhatsappTemplate, data map[string]string)
 			if template.Components[i].Parameters[j].Type == "image" {
 				val := data[template.Components[i].Parameters[j].Image.Link]
 				template.Components[i].Parameters[j].Image.Link = val
+			}
+			if template.Components[i].Parameters[j].Type == "video" {
+				val := data[template.Components[i].Parameters[j].Video.ID]
+				template.Components[i].Parameters[j].Video.ID = val
+
+				val2 := data[template.Components[i].Parameters[j].Video.Link]
+				template.Components[i].Parameters[j].Video.Link = val2
 			}
 		}
 	}
