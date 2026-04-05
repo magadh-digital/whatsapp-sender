@@ -250,13 +250,7 @@ func GenerateWhatsappMessage(template *WhatsappTemplate, data map[string]string)
 				val := data[template.Components[i].Parameters[j].Image.Link]
 				template.Components[i].Parameters[j].Image.Link = val
 			}
-			if template.Components[i].Parameters[j].Type == "video" {
-				val := data[template.Components[i].Parameters[j].Video.ID]
-				template.Components[i].Parameters[j].Video.ID = val
-
-				val2 := data[template.Components[i].Parameters[j].Video.Link]
-				template.Components[i].Parameters[j].Video.Link = val2
-			}
+			
 		}
 	}
 
@@ -325,6 +319,8 @@ func SendMessage(template *WhatsappTemplate, phone string) error {
 	// io reader body
 
 	jsonBody, _ := json.Marshal(body)
+
+	fmt.Println("request body", string(jsonBody))
 
 	ioBody := bytes.NewReader(jsonBody)
 
