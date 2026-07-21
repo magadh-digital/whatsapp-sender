@@ -4,7 +4,7 @@ import (
 	"context"
 	"log"
 	"time"
-	"whatsapp-sender/db"
+	"notify/db"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )

@@ -1,9 +1,8 @@
-// github.com/go-redis/redis/v9
-
 package redis
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/go-redis/redis/v8"
 )
@@ -22,20 +21,25 @@ func DefaultRedisClient() *redis.Client {
 	return RedisClient
 }
 
-func GetRedisClient() *redis.Client {
+func getRedisAddr() string {
+	addr := os.Getenv("REDIS_URI")
+	if addr == "" {
+		addr = "localhost:6379"
+	}
+	return addr
+}
 
+func GetRedisClient() *redis.Client {
 	rdb := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
+		Addr: getRedisAddr(),
 	})
 
 	_, err := rdb.Ping(rdb.Context()).Result()
-
 	if err != nil {
-		fmt.Println("Error connecting to Redis")
+		fmt.Println("Error connecting to Redis:", err)
 		panic(err)
 	}
 
-	fmt.Println("Connected to Redis")
+	fmt.Println("Connected to Redis at", getRedisAddr())
 	return rdb
-
 }

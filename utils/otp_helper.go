@@ -8,9 +8,9 @@ import (
 	"net/url"
 	"strings"
 	"time"
-	"whatsapp-sender/config"
-	"whatsapp-sender/models"
-	"whatsapp-sender/redis"
+	"notify/config"
+	"notify/models"
+	"notify/redis"
 )
 
 func GenerateOTP(phoneList []string, service string, otp_val string, check bool) string {
@@ -42,6 +42,8 @@ func ValidateOtp(phone, service, otp string) bool {
 
 	// check if otp already exists
 	otpInRedis, _ := redis.RedisClient.Get(redis.RedisClient.Context(), key).Result()
+	fmt.Println("OTP in redis", otpInRedis)
+	fmt.Println("OTP in request", otp)
 
 	if otpInRedis == otp {
 		redis.RedisClient.Del(redis.RedisClient.Context(), key)

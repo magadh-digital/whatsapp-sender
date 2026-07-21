@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"time"
-	"whatsapp-sender/db"
+	"notify/db"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"

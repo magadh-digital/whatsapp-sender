@@ -1,7 +1,7 @@
 package models
 
 import (
-	"whatsapp-sender/db"
+	"notify/db"
 
 	"go.mongodb.org/mongo-driver/mongo"
 )

@@ -1,8 +1,8 @@
 package handler
 
 import (
-	"whatsapp-sender/models"
-	"whatsapp-sender/utils"
+	"notify/models"
+	"notify/utils"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"

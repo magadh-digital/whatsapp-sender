@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
-	"whatsapp-sender/redis"
-	"whatsapp-sender/utils"
+	"notify/redis"
+	"notify/utils"
 
 	"github.com/gin-gonic/gin"
 )

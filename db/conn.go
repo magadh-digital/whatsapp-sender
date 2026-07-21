@@ -3,8 +3,8 @@ package db
 import (
 	"context"
 	"log"
-	"whatsapp-sender/config"
-	"whatsapp-sender/constants"
+	"notify/config"
+	"notify/constants"
 
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"

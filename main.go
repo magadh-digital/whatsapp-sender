@@ -1,18 +1,23 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	"strings"
-	"whatsapp-sender/config"
-	"whatsapp-sender/constants"
-	"whatsapp-sender/db"
-	"whatsapp-sender/handler"
-	"whatsapp-sender/handler/templates"
-	"whatsapp-sender/models"
-	"whatsapp-sender/redis"
-	"whatsapp-sender/utils"
+	"syscall"
+	"time"
+	"notify/config"
+	"notify/constants"
+	"notify/db"
+	"notify/handler"
+	"notify/handler/templates"
+	"notify/models"
+	"notify/redis"
+	"notify/utils"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -94,9 +99,6 @@ func main() {
 
 	// gin.SetMode(gin.ReleaseMode)
 
-	
-	
-	
 	db.ConnectDB()
 	redis.ConnectToRedis()
 	models.CreateConstantModelIndex()
@@ -109,7 +111,8 @@ func main() {
 	// gin.SetMode(gin.ReleaseMode)
 	server := gin.Default()
 
-	gin.SetMode(gin.ReleaseMode)
+	gin.SetMode(gin.DebugMode)
+	gin.Logger()
 
 	// Enable CORS
 	server.Use(cors.New(cors.Config{
@@ -207,7 +210,32 @@ func main() {
 
 	constantRoutes.DELETE("/:id", handler.DeleteConstant)
 
-	// Start the server on port 8080
+	// Start the server with graceful shutdown
 	port := fmt.Sprintf(":%s", config.GetEnvConfig().PORT)
-	server.Run(port)
+
+	srv := &http.Server{
+		Addr:    port,
+		Handler: server,
+	}
+
+	go func() {
+		log.Printf("Server starting on %s", port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Failed to start server: %v", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("Shutting down server...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalf("Server forced to shutdown: %v", err)
+	}
+
+	log.Println("Server exited gracefully")
 }

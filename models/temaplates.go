@@ -8,8 +8,8 @@ import (
 	"io"
 	"net/http"
 	"time"
-	"whatsapp-sender/config"
-	"whatsapp-sender/db"
+	"notify/config"
+	"notify/db"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"

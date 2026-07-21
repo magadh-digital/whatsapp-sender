@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"whatsapp-sender/models"
-	"whatsapp-sender/redis"
+	"notify/models"
+	"notify/redis"
 )
 
 type QueuePayload struct {
@@ -48,7 +48,7 @@ func QueueProcessing() {
 
 	queue := make(chan QueuePayload, concurrent)
 
-	for i := 0; i < concurrent; i += 1 {
+	for range concurrent {
 		go func() {
 			for {
 				queuePayload := <-queue

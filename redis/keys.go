@@ -5,7 +5,7 @@ import (
 	"reflect"
 )
 
-const prefix = "whatsapp-sender"
+const prefix = "notify"
 
 var RedisKeys = struct {
 	WhatsappMessageQueue string

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"whatsapp-sender/constants"
-	"whatsapp-sender/models"
-	"whatsapp-sender/redis"
+	"notify/constants"
+	"notify/models"
+	"notify/redis"
 
 	"github.com/gin-gonic/gin"
 	"github.com/spidey52/go-helper/helper"

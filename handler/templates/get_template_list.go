@@ -1,7 +1,7 @@
 package templates
 
 import (
-	"whatsapp-sender/models"
+	"notify/models"
 
 	"github.com/gin-gonic/gin"
 )
