@@ -2,7 +2,9 @@ package redis
 
 import (
 	"fmt"
-	"os"
+	"strings"
+
+	"notify/config"
 
 	"github.com/go-redis/redis/v8"
 )
@@ -21,18 +23,27 @@ func DefaultRedisClient() *redis.Client {
 	return RedisClient
 }
 
-func getRedisAddr() string {
-	addr := os.Getenv("REDIS_URI")
-	if addr == "" {
-		addr = "localhost:6379"
-	}
-	return addr
-}
-
 func GetRedisClient() *redis.Client {
-	rdb := redis.NewClient(&redis.Options{
-		Addr: getRedisAddr(),
-	})
+	uri := config.GetEnvConfig().REDIS_URI
+	if uri == "" {
+		uri = "localhost:6379"
+	}
+
+	var rdb *redis.Client
+
+	// Supports both "localhost:6379" and "redis://localhost:6379"
+	if strings.HasPrefix(uri, "redis://") || strings.HasPrefix(uri, "rediss://") {
+		opts, err := redis.ParseURL(uri)
+		if err != nil {
+			fmt.Println("Error parsing REDIS_URI:", err)
+			panic(err)
+		}
+		rdb = redis.NewClient(opts)
+	} else {
+		rdb = redis.NewClient(&redis.Options{
+			Addr: uri,
+		})
+	}
 
 	_, err := rdb.Ping(rdb.Context()).Result()
 	if err != nil {
@@ -40,6 +51,6 @@ func GetRedisClient() *redis.Client {
 		panic(err)
 	}
 
-	fmt.Println("Connected to Redis at", getRedisAddr())
+	fmt.Println("Connected to Redis")
 	return rdb
 }
