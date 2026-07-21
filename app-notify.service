@@ -5,8 +5,8 @@ Wants=redis.service mongod.service
 
 [Service]
 Type=simple
-User=deploy
-Group=deploy
+User=dev
+Group=dev
 WorkingDirectory=/opt/notify
 ExecStart=/opt/notify/notify
 EnvironmentFile=/opt/notify/.env

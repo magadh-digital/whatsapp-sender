@@ -3,6 +3,7 @@ set -e
 
 APP_NAME="notify"
 SERVICE_NAME="app-notify"
+APP_USER="dev"
 APP_DIR="/opt/$APP_NAME"
 SERVICE_FILE="$SERVICE_NAME.service"
 
@@ -13,10 +14,13 @@ echo "==> Copying binary to $APP_DIR..."
 sudo mkdir -p $APP_DIR
 sudo cp $APP_NAME $APP_DIR/
 sudo cp .env $APP_DIR/.env 2>/dev/null || echo "    [!] No .env found, make sure to create $APP_DIR/.env"
+sudo chown -R $APP_USER:$APP_USER $APP_DIR
+sudo chmod +x $APP_DIR/$APP_NAME
 
 echo "==> Setting up systemd service..."
 sudo cp $SERVICE_FILE /etc/systemd/system/
 sudo systemctl daemon-reload
+sudo systemctl reset-failed $SERVICE_NAME 2>/dev/null || true
 sudo systemctl enable $SERVICE_NAME
 sudo systemctl restart $SERVICE_NAME
 
