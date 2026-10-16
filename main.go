@@ -162,6 +162,9 @@ func main() {
 
 	// What this service sent (message_logs), phones masked, OTP variables hidden; staff session.
 	server.GET("/notify-logs", middleware.RequireStaff(), notifylogs.List)
+	server.GET("/notify-logs/:wamid", middleware.RequireStaff(), notifylogs.One)
+	// Meta delivery statuses, forwarded by mds-orders' webhook (HMAC-signed with NOTIFY_STATUS_SECRET)
+	server.POST("/meta-status", notifylogs.Status)
 
 	templateRoutes.POST("/send-message", func(ctx *gin.Context) {
 

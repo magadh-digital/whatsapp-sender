@@ -9,15 +9,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-func TestMaskPhone(t *testing.T) {
-	cases := map[string]string{"9431022243": "94•••••243", "919431022243": "91•••••••243", "123": "•••"}
-	for in, want := range cases {
-		if got := MaskPhone(in); got != want {
-			t.Errorf("MaskPhone(%s) = %s, want %s", in, got, want)
-		}
-	}
-}
-
 func TestIsOtpTemplate(t *testing.T) {
 	if !IsOtpTemplate("login_otp", "") || !IsOtpTemplate("anything", "AUTHENTICATION") || !IsOtpTemplate("verify_number", "UTILITY") {
 		t.Error("OTP templates not recognised")
@@ -47,8 +38,14 @@ func TestDayRange(t *testing.T) {
 func TestBuildFilter(t *testing.T) {
 	s, e, _ := DayRange("2026-10-16", "", time.Now())
 	q := BuildFilter(s, e, "sale_close", "+91 94310-22243", "failed")
-	if q["template"] != "sale_close" || q["status"] != "FAILED" {
+	if q["template"] != "sale_close" || len(q["$or"].(bson.A)) != 2 {
 		t.Errorf("filter %v", q)
+	}
+	if q := BuildFilter(s, e, "", "", "read"); q["delivery_status"] != "read" || q["status"] != "SUCCESS" {
+		t.Errorf("read filter %v", q)
+	}
+	if q := BuildFilter(s, e, "", "", "sent"); q["delivery_status"] == nil {
+		t.Errorf("sent filter must exclude delivered/read/failed: %v", q)
 	}
 	if re := q["phone"].(bson.M)["$regex"]; re != "9431022243$" {
 		t.Errorf("phone regex %v", re)
@@ -68,14 +65,11 @@ func TestToRow(t *testing.T) {
 	body := bson.M{"components": bson.A{bson.M{"type": "body", "parameters": bson.A{bson.M{"type": "text", "text": "4821"}, bson.M{"type": "text", "text": "10 min"}}}}}
 	ok := bson.M{"contacts": bson.A{bson.M{"input": "919431022243", "wa_id": "919431022243"}}, "messages": bson.A{bson.M{"id": "wamid.X"}}}
 	r := ToRow(doc(t, "login_otp", "SUCCESS", body, ok), true)
-	if r.Status != "sent" || r.MessageID != "wamid.X" || r.To != "94•••••243" {
+	if r.Status != "sent" || !r.Accepted || r.MessageID != "wamid.X" || r.To != "9431022243" {
 		t.Errorf("row %+v", r)
 	}
 	if strings.Join(r.Variables, ",") != Masked+","+Masked {
 		t.Errorf("OTP variables not masked: %v", r.Variables)
-	}
-	if s := r.Response["contacts"].([]any)[0].(map[string]any)["wa_id"]; s != "91•••••••243" {
-		t.Errorf("contact not masked: %v", s)
 	}
 	if strings.Contains(strings.Join(r.Variables, ""), "4821") {
 		t.Error("OTP leaked")
@@ -85,5 +79,21 @@ func TestToRow(t *testing.T) {
 	r = ToRow(doc(t, "sale_close", "FAILED", body, failed), false)
 	if r.Status != "failed" || !strings.Contains(r.Error, "does not exist in en") || r.Variables[0] != "4821" {
 		t.Errorf("failed row %+v", r)
+	}
+}
+
+func TestToRowDelivery(t *testing.T) {
+	body := bson.M{"components": bson.A{}}
+	ok := bson.M{"messages": bson.A{bson.M{"id": "wamid.Y"}}}
+	d := doc(t, "sale_close", "SUCCESS", body, ok)
+	d.Delivery = "read"
+	if r := ToRow(d, false); r.Status != "read" {
+		t.Errorf("read: %+v", r.Status)
+	}
+	d.Delivery = "failed"
+	d.ErrorTitle = "Message undeliverable"
+	d.ErrorDetail = "Receiver is incapable of receiving this message"
+	if r := ToRow(d, false); r.Status != "failed" || !strings.Contains(r.Error, "incapable") {
+		t.Errorf("failed: %+v %s", r.Status, r.Error)
 	}
 }

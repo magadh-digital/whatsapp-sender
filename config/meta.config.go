@@ -22,6 +22,8 @@ type MetaConfig struct {
 	AuthValidateURL string
 	// Permission that may create templates (super_admin always may). Default order:config:update.
 	CreatePermission string
+	// Shared secret for POST /meta-status (HMAC-SHA256 of the body, header X-Notify-Signature). Empty = intake off.
+	StatusSecret string
 }
 
 func GetMetaConfig() MetaConfig {
@@ -54,5 +56,6 @@ func GetMetaConfig() MetaConfig {
 		GraphBaseURL:     base,
 		AuthValidateURL:  strings.TrimSpace(os.Getenv("AUTH_VALIDATE_URL")),
 		CreatePermission: perm,
+		StatusSecret:     strings.TrimSpace(os.Getenv("NOTIFY_STATUS_SECRET")),
 	}
 }

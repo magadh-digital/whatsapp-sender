@@ -1,9 +1,11 @@
 // Package notifylogs reads what this service sent: one Mongo `message_logs` row per WhatsApp send, written by
 // models.SendMessage with Meta's answer (SUCCESS = Meta accepted it, with its wamid; FAILED = Meta's error).
-// Delivery / read receipts are NOT here: Meta's webhooks go to mds-orders, not to this service.
+// Delivery receipts (sent / delivered / read / failed) come later from Meta's webhook, which points at mds-orders;
+// mds-orders forwards the statuses to POST /meta-status (status.go), which stamps them on the row by wamid. Meta has
+// no API to ask for a message's status, so the webhook is the only source.
 //
-// For the console's WhatsApp Templates > Sent log. Phones are masked in every answer; the variables of OTP /
-// authentication templates are replaced by "••••". The old open /message-logs route is left as it was.
+// For the console's WhatsApp Templates > Sent log (staff only). Phones are shown in full (owner, 16 Oct 2026); the
+// variables of OTP / authentication templates are replaced by "••••".
 package notifylogs
 
 import (
@@ -29,23 +31,15 @@ import (
 const Masked = "••••"
 
 var (
-	ist        = time.FixedZone("IST", 5*3600+1800)
-	nonDigit   = regexp.MustCompile(`\D`)
-	otpNameRe  = regexp.MustCompile(`(?i)otp|verif|passcode|login_code|auth`)
-	dayRe      = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
-	indexOnce  sync.Once
-	maxDays    = 31
-	statusWord = map[string]string{"sent": "SUCCESS", "failed": "FAILED"}
+	ist       = time.FixedZone("IST", 5*3600+1800)
+	nonDigit  = regexp.MustCompile(`\D`)
+	otpNameRe = regexp.MustCompile(`(?i)otp|verif|passcode|login_code|auth`)
+	dayRe     = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+	indexOnce sync.Once
+	maxDays   = 31
+	// the Sent log's status filter
+	statusFilters = []string{"sent", "delivered", "read", "failed"}
 )
-
-// MaskPhone keeps the first two and last three digits: 98•••••243.
-func MaskPhone(p string) string {
-	d := nonDigit.ReplaceAllString(p, "")
-	if len(d) <= 5 {
-		return strings.Repeat("•", len(d))
-	}
-	return d[:2] + strings.Repeat("•", len(d)-5) + d[len(d)-3:]
-}
 
 // IsOtpTemplate: Meta category AUTHENTICATION, or a name that says OTP / verification.
 func IsOtpTemplate(name, category string) bool {
@@ -87,21 +81,40 @@ type logDoc struct {
 	CreatedAt time.Time          `bson:"created_at"`
 	Body      bson.Raw           `bson:"body"`
 	Payload   bson.Raw           `bson:"payload"`
+	// written by POST /meta-status from Meta's webhook
+	Delivery    string     `bson:"delivery_status"`
+	SentAt      *time.Time `bson:"sent_at"`
+	DeliveredAt *time.Time `bson:"delivered_at"`
+	ReadAt      *time.Time `bson:"read_at"`
+	FailedAt    *time.Time `bson:"failed_at"`
+	ErrorCode   int        `bson:"error_code"`
+	ErrorTitle  string     `bson:"error_title"`
+	ErrorDetail string     `bson:"error_detail"`
 }
 
 // Row is one send as the console shows it.
 type Row struct {
-	ID        string         `json:"id"`
-	Time      time.Time      `json:"time"`
-	Template  string         `json:"template"`
-	To        string         `json:"to"`
-	Variables []string       `json:"variables"`
-	Status    string         `json:"status"` // sent | failed
-	MessageID string         `json:"message_id,omitempty"`
-	Error     string         `json:"error,omitempty"`
-	OtpMasked bool           `json:"otp_masked"`
-	Body      map[string]any `json:"body"`
-	Response  map[string]any `json:"response"`
+	ID        string    `json:"id"`
+	Time      time.Time `json:"time"`
+	Template  string    `json:"template"`
+	To        string    `json:"to"`
+	Variables []string  `json:"variables"`
+	// sent | delivered | read | failed: the furthest the message got (failed = Meta refused the send or the webhook said so)
+	Status string `json:"status"`
+	// Meta accepted the send call (it then has a message id); false = refused on the spot, see Error
+	Accepted bool `json:"accepted"`
+	// the last status Meta's webhook reported, "" before the first one arrives
+	Delivery    string         `json:"delivery,omitempty"`
+	SentAt      *time.Time     `json:"sent_at,omitempty"`
+	DeliveredAt *time.Time     `json:"delivered_at,omitempty"`
+	ReadAt      *time.Time     `json:"read_at,omitempty"`
+	FailedAt    *time.Time     `json:"failed_at,omitempty"`
+	ErrorCode   int            `json:"error_code,omitempty"`
+	MessageID   string         `json:"message_id,omitempty"`
+	Error       string         `json:"error,omitempty"`
+	OtpMasked   bool           `json:"otp_masked"`
+	Body        map[string]any `json:"body"`
+	Response    map[string]any `json:"response"`
 }
 
 func rawToMap(r bson.Raw) map[string]any {
@@ -135,11 +148,16 @@ func ToRow(d logDoc, otp bool) Row {
 	body := rawToMap(d.Body)
 	resp := rawToMap(d.Payload)
 	r := Row{
-		ID: d.ID.Hex(), Time: d.CreatedAt, Template: d.Template, To: MaskPhone(d.Phone),
+		ID: d.ID.Hex(), Time: d.CreatedAt, Template: d.Template, To: d.Phone,
 		Variables: []string{}, OtpMasked: otp, Body: body, Response: resp, Status: "failed",
+		Accepted: d.Status == "SUCCESS", Delivery: d.Delivery,
+		SentAt: d.SentAt, DeliveredAt: d.DeliveredAt, ReadAt: d.ReadAt, FailedAt: d.FailedAt, ErrorCode: d.ErrorCode,
 	}
-	if d.Status == "SUCCESS" {
+	if r.Accepted {
 		r.Status = "sent"
+		if d.Delivery == "delivered" || d.Delivery == "read" || d.Delivery == "failed" {
+			r.Status = d.Delivery
+		}
 	}
 	for _, c := range asList(body["components"]) {
 		for _, p := range asList(asMap(c)["parameters"]) {
@@ -158,15 +176,6 @@ func ToRow(d logDoc, otp bool) Row {
 			}
 		}
 	}
-	// Meta echoes the number back: mask it there too
-	for _, c := range asList(resp["contacts"]) {
-		cm := asMap(c)
-		for _, k := range []string{"input", "wa_id"} {
-			if s := asStr(cm[k]); s != "" {
-				cm[k] = MaskPhone(s)
-			}
-		}
-	}
 	if msgs := asList(resp["messages"]); len(msgs) > 0 {
 		r.MessageID = asStr(asMap(msgs[0])["id"])
 	}
@@ -174,6 +183,12 @@ func ToRow(d logDoc, otp bool) Row {
 		r.Error = asStr(e["message"])
 		if det := asStr(asMap(e["error_data"])["details"]); det != "" && det != r.Error {
 			r.Error += ": " + det
+		}
+	}
+	if d.Delivery == "failed" {
+		r.Error = strings.TrimSpace(strings.Trim(d.ErrorTitle+": "+d.ErrorDetail, ": "))
+		if r.Error == "" {
+			r.Error = "Meta reported the message as failed"
 		}
 	}
 	return r
@@ -191,24 +206,45 @@ func BuildFilter(start, end time.Time, template, phone, status string) bson.M {
 		}
 		q["phone"] = bson.M{"$regex": d + "$"}
 	}
-	if s, ok := statusWord[status]; ok {
-		q["status"] = s
+	switch status {
+	case "sent": // accepted, nothing further yet
+		q["status"] = "SUCCESS"
+		q["delivery_status"] = bson.M{"$nin": bson.A{"delivered", "read", "failed"}}
+	case "delivered", "read":
+		q["status"] = "SUCCESS"
+		q["delivery_status"] = status
+	case "failed":
+		q["$or"] = bson.A{bson.M{"status": "FAILED"}, bson.M{"delivery_status": "failed"}}
 	}
 	return q
 }
 
-// List: GET /notify-logs?from=&to=&template=&phone=&status=sent|failed&page=&limit=
+func validStatus(s string) bool {
+	for _, x := range statusFilters {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
+func ensureIndexes() {
+	indexOnce.Do(func() {
+		for _, keys := range []bson.D{{{Key: "created_at", Value: -1}}, {{Key: "payload.messages.id", Value: 1}}} {
+			if _, err := db.MessageLogModel.Indexes().CreateOne(context.Background(), mongo.IndexModel{Keys: keys}); err != nil {
+				log.Println("[notify-logs] index:", err)
+			}
+		}
+	})
+}
+
+// List: GET /notify-logs?from=&to=&template=&phone=&status=sent|delivered|read|failed&page=&limit=
 func List(ctx *gin.Context) {
 	if db.MessageLogModel == nil {
 		ctx.JSON(503, gin.H{"message": "Message log store not connected"})
 		return
 	}
-	indexOnce.Do(func() {
-		_, err := db.MessageLogModel.Indexes().CreateOne(context.Background(), mongo.IndexModel{Keys: bson.D{{Key: "created_at", Value: -1}}})
-		if err != nil {
-			log.Println("[notify-logs] created_at index:", err)
-		}
-	})
+	ensureIndexes()
 
 	start, end, bad := DayRange(ctx.Query("from"), ctx.Query("to"), time.Now())
 	if bad != "" {
@@ -216,8 +252,8 @@ func List(ctx *gin.Context) {
 		return
 	}
 	status := ctx.Query("status")
-	if status != "" && statusWord[status] == "" {
-		ctx.JSON(400, gin.H{"message": "Status: sent or failed"})
+	if status != "" && !validStatus(status) {
+		ctx.JSON(400, gin.H{"message": "Status: sent, delivered, read or failed"})
 		return
 	}
 	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
@@ -254,15 +290,9 @@ func List(ctx *gin.Context) {
 	total, _ := db.MessageLogModel.CountDocuments(c, filter)
 
 	// counts per status under the same filters except status (for the console's pills)
-	base := BuildFilter(start, end, template, phone, "")
 	counts := gin.H{}
-	for word, stored := range statusWord {
-		q := bson.M{}
-		for k, v := range base {
-			q[k] = v
-		}
-		q["status"] = stored
-		n, _ := db.MessageLogModel.CountDocuments(c, q)
+	for _, word := range statusFilters {
+		n, _ := db.MessageLogModel.CountDocuments(c, BuildFilter(start, end, template, phone, word))
 		counts[word] = n
 	}
 
