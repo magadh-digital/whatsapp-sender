@@ -7,12 +7,17 @@ APP_USER="dev"
 APP_DIR="/opt/$APP_NAME"
 SERVICE_FILE="$SERVICE_NAME.service"
 
+echo "==> Pulling latest code..."
+git pull --ff-only
+
 echo "==> Building binary..."
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $APP_NAME .
 
 echo "==> Copying binary to $APP_DIR..."
 sudo mkdir -p $APP_DIR
-sudo cp $APP_NAME $APP_DIR/
+# copy under a new name, then rename: a running binary cannot be overwritten ("Text file busy")
+sudo cp $APP_NAME $APP_DIR/$APP_NAME.new
+sudo mv $APP_DIR/$APP_NAME.new $APP_DIR/$APP_NAME
 sudo cp .env $APP_DIR/.env 2>/dev/null || echo "    [!] No .env found, make sure to create $APP_DIR/.env"
 sudo chown -R $APP_USER:$APP_USER $APP_DIR
 sudo chmod +x $APP_DIR/$APP_NAME
