@@ -139,9 +139,11 @@ func main() {
 
 	otpRoutes.POST("/send", handler.SendOTP)
 	otpRoutes.POST("/validate", handler.ValidateOtp)
-	otpRoutes.GET("/view", handler.Getotp)
+	// live OTPs: staff only (was open to anyone)
+	otpRoutes.GET("/view", middleware.RequireStaff(), handler.Getotp)
 
-	server.GET("/message-logs", handler.ListMessageLog)
+	// full phones and variables: staff only (was open to anyone)
+	server.GET("/message-logs", middleware.RequireStaff(), handler.ListMessageLog)
 
 	templateRoutes.GET("", templates.GetTemplateList)
 	templateRoutes.POST("", templates.CreateTemplate)
