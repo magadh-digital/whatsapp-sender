@@ -12,11 +12,13 @@ var RedisKeys = struct {
 	Counter              string
 	OtpMessage           string
 	ConstantCache        string
+	MetaTemplateArchived string
 }{
 	WhatsappMessageQueue: "message-queue",
 	Counter:              "counter",
 	OtpMessage:           "otp",
 	ConstantCache:        "constants",
+	MetaTemplateArchived: "meta-template-archived",
 }
 
 func init() {

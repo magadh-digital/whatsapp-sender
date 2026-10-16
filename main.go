@@ -15,6 +15,7 @@ import (
 	"notify/db"
 	"notify/handler"
 	"notify/handler/metatemplates"
+	"notify/handler/notifylogs"
 	"notify/handler/templates"
 	"notify/middleware"
 	"notify/models"
@@ -151,7 +152,14 @@ func main() {
 	metaTemplateRoutes := server.Group("/meta-templates", middleware.RequireStaff())
 	metaTemplateRoutes.GET("", metatemplates.List)
 	metaTemplateRoutes.GET("/:name", metatemplates.Get)
-	metaTemplateRoutes.POST("", middleware.RequirePermission(config.GetMetaConfig().CreatePermission), metatemplates.Create)
+	canManage := middleware.RequirePermission(config.GetMetaConfig().CreatePermission)
+	metaTemplateRoutes.POST("", canManage, metatemplates.Create)
+	metaTemplateRoutes.DELETE("/:name", canManage, metatemplates.Delete)
+	metaTemplateRoutes.POST("/:name/archive", canManage, metatemplates.Archive)
+	metaTemplateRoutes.POST("/:name/unarchive", canManage, metatemplates.Unarchive)
+
+	// What this service sent (message_logs), phones masked, OTP variables hidden; staff session.
+	server.GET("/notify-logs", middleware.RequireStaff(), notifylogs.List)
 
 	templateRoutes.POST("/send-message", func(ctx *gin.Context) {
 

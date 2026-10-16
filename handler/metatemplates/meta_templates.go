@@ -78,6 +78,8 @@ type Row struct {
 	Buttons        []metaButton `json:"buttons"`
 	// a send preset with this name exists here, so /templates/send-message can send it
 	Wired bool `json:"wired"`
+	// hidden from the default list (local to this service, a Redis set; Meta is not told)
+	Archived bool `json:"archived"`
 }
 
 type metaError struct {
@@ -271,7 +273,7 @@ func metaFailure(ctx *gin.Context, status int, merr *metaError, err error) {
 
 // ---------------------------------------------------------------- handlers
 
-// List: GET /meta-templates[?refresh=1]
+// List: GET /meta-templates[?refresh=1][&archived=1] — archived templates are left out unless archived=1.
 func List(ctx *gin.Context) {
 	cfg := config.GetMetaConfig()
 	if msg := notConfigured(cfg); msg != "" {
@@ -283,7 +285,8 @@ func List(ctx *gin.Context) {
 		metaFailure(ctx, 502, merr, err)
 		return
 	}
-	ctx.JSON(200, gin.H{"result": rows, "fetched_at": fetched, "cached": cached})
+	out, hidden := applyArchived(rows, archivedNames(), ctx.Query("archived") == "1")
+	ctx.JSON(200, gin.H{"result": out, "archived_hidden": hidden, "fetched_at": fetched, "cached": cached})
 }
 
 // Get: GET /meta-templates/:name — every language of one template.
@@ -299,6 +302,7 @@ func Get(ctx *gin.Context) {
 		return
 	}
 	name := ctx.Param("name")
+	rows, _ = applyArchived(rows, archivedNames(), true)
 	out := make([]Row, 0)
 	for _, r := range rows {
 		if r.Name == name {
