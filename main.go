@@ -14,7 +14,9 @@ import (
 	"notify/constants"
 	"notify/db"
 	"notify/handler"
+	"notify/handler/metatemplates"
 	"notify/handler/templates"
+	"notify/middleware"
 	"notify/models"
 	"notify/redis"
 	"notify/utils"
@@ -143,6 +145,13 @@ func main() {
 	templateRoutes.GET("", templates.GetTemplateList)
 	templateRoutes.POST("", templates.CreateTemplate)
 	templateRoutes.DELETE(":id", templates.DeleteTemplate)
+
+	// Meta message templates (the WhatsApp Business Account), for the console: list for staff, create with a permission.
+	// Callers send their console session (app-session-id), checked against mds-orders (AUTH_VALIDATE_URL).
+	metaTemplateRoutes := server.Group("/meta-templates", middleware.RequireStaff())
+	metaTemplateRoutes.GET("", metatemplates.List)
+	metaTemplateRoutes.GET("/:name", metatemplates.Get)
+	metaTemplateRoutes.POST("", middleware.RequirePermission(config.GetMetaConfig().CreatePermission), metatemplates.Create)
 
 	templateRoutes.POST("/send-message", func(ctx *gin.Context) {
 
