@@ -14,6 +14,7 @@ import (
 	"notify/constants"
 	"notify/db"
 	"notify/handler"
+	"notify/handler/chatmsg"
 	"notify/handler/metatemplates"
 	"notify/handler/notifylogs"
 	"notify/handler/templates"
@@ -165,6 +166,24 @@ func main() {
 	server.GET("/notify-logs/:wamid", middleware.RequireStaff(), notifylogs.One)
 	// Meta delivery statuses, forwarded by mds-orders' webhook (HMAC-signed with NOTIFY_STATUS_SECRET)
 	server.POST("/meta-status", notifylogs.Status)
+
+	// Magadh Bot replies (text, voice, reactions, read + typing) and inbound media, sent synchronously; signed with
+	// the same service key as /meta-status (NOTIFY_STATUS_SECRET, X-Notify-Signature). See handler/chatmsg.
+	metaClient, fetchClient := chatmsg.NewClients()
+	chatmsg.Register(server, &chatmsg.Deps{
+		Cfg:   config.GetChatConfig(),
+		Meta:  metaClient,
+		Fetch: fetchClient,
+		FirstUse: func(key string, ttl time.Duration) (bool, error) {
+			return redis.RedisClient.SetNX(context.Background(), redis.RedisKeys.ChatSignature+":"+key, 1, ttl).Result()
+		},
+		Log: func(l *models.MessageLog) {
+			if err := l.Create(); err != nil {
+				log.Println("[chat-message] log:", err)
+			}
+		},
+		Now: time.Now,
+	})
 
 	templateRoutes.POST("/send-message", func(ctx *gin.Context) {
 
