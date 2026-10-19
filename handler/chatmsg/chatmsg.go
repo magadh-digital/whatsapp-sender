@@ -1,7 +1,13 @@
 // Package chatmsg: free-form WhatsApp replies for Magadh Bot, so the bot never holds the Meta token.
 //
-//	POST /chat-message   one of: text, voice (audio_base64 | audio_url), reaction, mark_read (+ typing)
+//	POST /chat-message   one of: text, voice (audio_base64 | audio_url), document (document_base64 + filename),
+//	                     image (image_base64), template (an approved Meta template), reaction, mark_read (+ typing)
 //	GET  /media/:id      an inbound media file's bytes (Meta media id → URL → download with the token)
+//
+// document / image: notify uploads the bytes to Meta (/{pnid}/media) and sends a document (filename + caption) or an
+// image (caption) message. template: the only kind allowed outside the 24 h customer-service window (Meta enforces
+// that, not notify): {name, language, body_params, button_payloads} → type "template" with body text parameters and
+// quick-reply button payloads (by index).
 //
 // Auth = the existing service key NOTIFY_STATUS_SECRET (the one mds-orders signs POST /meta-status with), same
 // header and scheme: X-Notify-Signature: sha256=<hex HMAC-SHA256>. Signed bytes: the exact body for POST, the string
@@ -17,8 +23,9 @@
 //	                                              never reached Meta, or the voice upload failed (nothing was sent)
 //	504 {ok:false, outcome:"unknown", error}      no answer / 5xx / an answer without a message id: it may have gone
 //
-// Text and voice sends are logged to message_logs (template chat_text / chat_voice) with Meta's answer; the text
-// itself is never stored (Masked + its length).
+// Text, voice, document, image and template sends are logged to message_logs (template chat_text / chat_voice /
+// chat_document / chat_image / chat_template) with Meta's answer; the text, captions, file names and template
+// parameters are never stored (Masked + lengths / counts; a template's name and language are).
 package chatmsg
 
 import (
@@ -54,7 +61,9 @@ import (
 
 const (
 	TextLimit     = 4096             // Meta's text body limit (UTF-16 units, as the bot splits)
-	MaxMediaBytes = 16 << 20         // Meta's audio limit; also the GET /media cap
+	MaxMediaBytes = 16 << 20         // Meta's audio limit; also the GET /media cap and the document cap here
+	MaxImageBytes = 5 << 20          // Meta's image limit
+	CaptionLimit  = 1024             // Meta's media caption limit
 	maxBodyBytes  = 23 << 20         // base64 of 16 MB + JSON
 	MaxSkew       = 5 * time.Minute  // ts window
 	replayTTL     = 15 * time.Minute // signature remembered for longer than the window
@@ -66,7 +75,24 @@ var (
 	nonDigit  = regexp.MustCompile(`\D`)
 	// Meta's accepted audio types (ogg = opus only)
 	audioMimes = map[string]bool{"audio/ogg": true, "audio/mpeg": true, "audio/mp4": true, "audio/aac": true, "audio/amr": true}
-	metaHostRe = regexp.MustCompile(`(?i)(^|\.)(fbsbx\.com|facebook\.com|whatsapp\.net|fbcdn\.net)$`)
+	// Meta's document types (text/csv goes up as text/plain, the type Meta lists for text files; the .csv name stays)
+	documentMimes = map[string]string{
+		"application/pdf":          "application/pdf",
+		"text/plain":               "text/plain",
+		"text/csv":                 "text/plain",
+		"application/vnd.ms-excel": "application/vnd.ms-excel",
+		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		"application/msword": "application/msword",
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.document":   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		"application/vnd.ms-powerpoint":                                             "application/vnd.ms-powerpoint",
+		"application/vnd.openxmlformats-officedocument.presentationml.presentation": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+	}
+	imageMimes  = map[string]bool{"image/jpeg": true, "image/png": true}
+	filenameRe  = regexp.MustCompile(`^[^/\\\x00-\x1f<>:"|?*]{1,200}\.[A-Za-z0-9]{1,8}$`)
+	tplNameRe   = regexp.MustCompile(`^[a-z0-9_]{1,512}$`)
+	tplLangRe   = regexp.MustCompile(`^[a-z]{2,3}(_[A-Z]{2})?$`)
+	fourSpaceRe = regexp.MustCompile(` {5,}`)
+	metaHostRe  = regexp.MustCompile(`(?i)(^|\.)(fbsbx\.com|facebook\.com|whatsapp\.net|fbcdn\.net)$`)
 )
 
 // Deps: everything the handlers touch, so tests can swap Meta, Redis and Mongo.
@@ -151,20 +177,36 @@ type Reaction struct {
 	Emoji     *string `json:"emoji"`
 }
 
-type ChatRequest struct {
-	Ts          int64     `json:"ts"`
-	Phone       string    `json:"phone"`
-	Text        *string   `json:"text"`
-	AudioURL    string    `json:"audio_url"`
-	AudioBase64 string    `json:"audio_base64"`
-	Mime        string    `json:"mime"`
-	ReplyTo     string    `json:"reply_to"`
-	MarkRead    string    `json:"mark_read"`
-	Typing      bool      `json:"typing"`
-	Reaction    *Reaction `json:"reaction"`
+// Template: an approved Meta message template (the only kind Meta delivers outside the 24 h window).
+type Template struct {
+	Name     string `json:"name"`
+	Language string `json:"language"`
+	// {{1}}, {{2}}… of the body, in order
+	BodyParams []string `json:"body_params"`
+	// quick-reply button payloads by button index ("" = that button gets none)
+	ButtonPayloads []string `json:"button_payloads"`
 }
 
-// Kind: "text" | "voice" | "reaction" | "mark_read", or an error text when the body is not exactly one of them.
+type ChatRequest struct {
+	Ts             int64     `json:"ts"`
+	Phone          string    `json:"phone"`
+	Text           *string   `json:"text"`
+	AudioURL       string    `json:"audio_url"`
+	AudioBase64    string    `json:"audio_base64"`
+	DocumentBase64 string    `json:"document_base64"`
+	ImageBase64    string    `json:"image_base64"`
+	Filename       string    `json:"filename"`
+	Caption        string    `json:"caption"`
+	Mime           string    `json:"mime"`
+	ReplyTo        string    `json:"reply_to"`
+	MarkRead       string    `json:"mark_read"`
+	Typing         bool      `json:"typing"`
+	Reaction       *Reaction `json:"reaction"`
+	Template       *Template `json:"template"`
+}
+
+// Kind: "text" | "voice" | "document" | "image" | "template" | "reaction" | "mark_read", or an error text when the
+// body is not exactly one of them.
 func (r *ChatRequest) Kind() (string, string) {
 	kinds := []string{}
 	if r.Text != nil {
@@ -173,6 +215,15 @@ func (r *ChatRequest) Kind() (string, string) {
 	if r.AudioURL != "" || r.AudioBase64 != "" {
 		kinds = append(kinds, "voice")
 	}
+	if r.DocumentBase64 != "" {
+		kinds = append(kinds, "document")
+	}
+	if r.ImageBase64 != "" {
+		kinds = append(kinds, "image")
+	}
+	if r.Template != nil {
+		kinds = append(kinds, "template")
+	}
 	if r.Reaction != nil {
 		kinds = append(kinds, "reaction")
 	}
@@ -180,16 +231,33 @@ func (r *ChatRequest) Kind() (string, string) {
 		kinds = append(kinds, "mark_read")
 	}
 	if len(kinds) != 1 {
-		return "", "Send exactly one of text, audio_base64 / audio_url, reaction, mark_read"
+		return "", "Send exactly one of text, audio_base64 / audio_url, document_base64, image_base64, template, reaction, mark_read"
 	}
 	k := kinds[0]
 	if r.AudioURL != "" && r.AudioBase64 != "" {
 		return "", "audio_url or audio_base64, not both"
 	}
-	if r.ReplyTo != "" && (k == "mark_read" || k == "reaction" || !wamidRe.MatchString(r.ReplyTo)) {
-		return "", "reply_to must be a message id, with text or voice only"
+	if r.ReplyTo != "" && (k == "mark_read" || k == "reaction" || k == "template" || !wamidRe.MatchString(r.ReplyTo)) {
+		return "", "reply_to must be a message id, with text, voice, document or image only"
+	}
+	if r.Caption != "" && k != "document" && k != "image" {
+		return "", "caption goes with document or image only"
+	}
+	if r.Filename != "" && k != "document" {
+		return "", "filename goes with document only"
+	}
+	if k == "document" || k == "image" {
+		if !utf8.ValidString(r.Caption) || utf16Len(r.Caption) > CaptionLimit {
+			return "", fmt.Sprintf("caption: UTF-8, at most %d characters", CaptionLimit)
+		}
 	}
 	switch k {
+	case "document":
+		if !filenameRe.MatchString(r.Filename) || !utf8.ValidString(r.Filename) {
+			return "", "filename: a plain file name with an extension (no path), at most 200 characters"
+		}
+	case "template":
+		return k, r.Template.validate()
 	case "text":
 		t := *r.Text
 		if strings.TrimSpace(t) == "" {
@@ -214,6 +282,81 @@ func (r *ChatRequest) Kind() (string, string) {
 		}
 	}
 	return k, ""
+}
+
+func (t *Template) validate() string {
+	if !tplNameRe.MatchString(t.Name) {
+		return "template.name: lowercase letters, digits and _"
+	}
+	if !tplLangRe.MatchString(t.Language) {
+		return "template.language: a Meta language code such as hi or en_US"
+	}
+	if len(t.BodyParams) > 20 {
+		return "template.body_params: at most 20"
+	}
+	for i, p := range t.BodyParams {
+		// Meta refuses empty parameters, new lines, tabs and more than four spaces in a row
+		if strings.TrimSpace(p) == "" || !utf8.ValidString(p) || strings.ContainsAny(p, "\n\r\t") || fourSpaceRe.MatchString(p) || utf8.RuneCountInString(p) > 1024 {
+			return fmt.Sprintf("template.body_params[%d]: non-empty, one line, no tabs, at most 4 spaces in a row, at most 1024 characters", i)
+		}
+	}
+	if len(t.ButtonPayloads) > 10 {
+		return "template.button_payloads: at most 10"
+	}
+	for i, p := range t.ButtonPayloads {
+		if len(p) > 128 || !utf8.ValidString(p) {
+			return fmt.Sprintf("template.button_payloads[%d]: at most 128 bytes", i)
+		}
+	}
+	return ""
+}
+
+// Payload: Meta's "template" object.
+func (t *Template) Payload() map[string]any {
+	components := []map[string]any{}
+	if len(t.BodyParams) > 0 {
+		params := make([]map[string]any, 0, len(t.BodyParams))
+		for _, p := range t.BodyParams {
+			params = append(params, map[string]any{"type": "text", "text": p})
+		}
+		components = append(components, map[string]any{"type": "body", "parameters": params})
+	}
+	for i, p := range t.ButtonPayloads {
+		if p == "" {
+			continue
+		}
+		components = append(components, map[string]any{
+			"type": "button", "sub_type": "quick_reply", "index": strconv.Itoa(i),
+			"parameters": []map[string]any{{"type": "payload", "payload": p}},
+		})
+	}
+	out := map[string]any{"name": t.Name, "language": map[string]any{"code": t.Language}}
+	if len(components) > 0 {
+		out["components"] = components
+	}
+	return out
+}
+
+// DocumentMime: the type to upload a document as ("" = Meta does not take it).
+func DocumentMime(m string) string {
+	t, _, err := mime.ParseMediaType(strings.TrimSpace(m))
+	if err != nil {
+		return ""
+	}
+	return documentMimes[strings.ToLower(t)]
+}
+
+// ImageMime: image/jpeg or image/png, else "".
+func ImageMime(m string) string {
+	t, _, err := mime.ParseMediaType(strings.TrimSpace(m))
+	if err != nil {
+		return ""
+	}
+	t = strings.ToLower(t)
+	if imageMimes[t] {
+		return t
+	}
+	return ""
 }
 
 // AudioMime: the bare type (parameters such as codecs=opus dropped) when Meta accepts it, else "".
@@ -383,15 +526,22 @@ func (d *Deps) postMessage(payload map[string]any, needID bool) Result {
 	return MapMetaAnswer(resp.StatusCode, raw, needID)
 }
 
-// uploadMedia: POST /{pnid}/media (multipart). Any failure = nothing was sent.
-func (d *Deps) uploadMedia(data []byte, mimeType string) (string, Result) {
+// uploadMedia: POST /{pnid}/media (multipart). Any failure = nothing was sent. filename "" = voice.<ext>.
+func (d *Deps) uploadMedia(data []byte, mimeType, filename string) (string, Result) {
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
 	_ = w.WriteField("messaging_product", "whatsapp")
 	_ = w.WriteField("type", mimeType)
 	h := make(textproto.MIMEHeader)
-	ext := map[string]string{"audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a", "audio/aac": "aac", "audio/amr": "amr"}[mimeType]
-	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename="voice.%s"`, ext))
+	if filename == "" {
+		ext := map[string]string{"audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a", "audio/aac": "aac", "audio/amr": "amr", "image/jpeg": "jpg", "image/png": "png"}[mimeType]
+		filename = "voice." + ext
+		if strings.HasPrefix(mimeType, "image/") {
+			filename = "image." + ext
+		}
+	}
+	// filename is safe to quote: filenameRe (documents) leaves out quotes, backslashes and control characters
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename="%s"`, filename))
 	h.Set("Content-Type", mimeType)
 	part, _ := w.CreatePart(h)
 	_, _ = part.Write(data)
@@ -404,13 +554,13 @@ func (d *Deps) uploadMedia(data []byte, mimeType string) (string, Result) {
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	resp, err := d.Meta.Do(req)
 	if err != nil {
-		return "", notSent(502, "Voice upload failed: "+err.Error())
+		return "", notSent(502, "Media upload failed: "+err.Error())
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		r := MapMetaAnswer(resp.StatusCode, raw, false)
-		r.Outcome, r.HTTP, r.Error = "not_sent", 502, "Voice upload refused: "+r.Error
+		r.Outcome, r.HTTP, r.Error = "not_sent", 502, "Media upload refused: "+r.Error
 		return "", r
 	}
 	var up struct {
@@ -418,7 +568,7 @@ func (d *Deps) uploadMedia(data []byte, mimeType string) (string, Result) {
 	}
 	_ = json.Unmarshal(raw, &up)
 	if up.ID == "" {
-		return "", notSent(502, "Voice upload returned no media id")
+		return "", notSent(502, "Media upload returned no media id")
 	}
 	return up.ID, Result{}
 }
@@ -556,7 +706,7 @@ func (d *Deps) ChatMessage(ctx *gin.Context) {
 			ctx.JSON(400, notSent(400, "mime: audio/ogg (opus), audio/mpeg, audio/mp4, audio/aac or audio/amr").JSON())
 			return
 		}
-		id, res := d.uploadMedia(data, mt)
+		id, res := d.uploadMedia(data, mt, "")
 		if res.Outcome != "" {
 			d.log("chat_voice", res, phone10, logBody)
 			ctx.JSON(res.HTTP, res.JSON())
@@ -566,6 +716,58 @@ func (d *Deps) ChatMessage(ctx *gin.Context) {
 		p["audio"] = map[string]any{"id": id}
 		logBody["bytes"] = len(data)
 		logBody["mime"] = mt
+	case "document", "image":
+		b64, limit, mt := in.DocumentBase64, MaxMediaBytes, DocumentMime(in.Mime)
+		if kind == "image" {
+			b64, limit, mt = in.ImageBase64, MaxImageBytes, ImageMime(in.Mime)
+		}
+		data, err := base64.StdEncoding.DecodeString(b64)
+		if err != nil {
+			ctx.JSON(400, notSent(400, kind+"_base64 is not base64").JSON())
+			return
+		}
+		if len(data) == 0 {
+			ctx.JSON(400, notSent(400, kind+" is empty").JSON())
+			return
+		}
+		if len(data) > limit {
+			ctx.JSON(413, notSent(413, fmt.Sprintf("%s larger than %d MB", kind, limit>>20)).JSON())
+			return
+		}
+		if mt == "" {
+			if kind == "image" {
+				ctx.JSON(400, notSent(400, "mime: image/jpeg or image/png").JSON())
+			} else {
+				ctx.JSON(400, notSent(400, "mime: a document type Meta accepts (pdf, txt, csv, xls/xlsx, doc/docx, ppt/pptx)").JSON())
+			}
+			return
+		}
+		id, res := d.uploadMedia(data, mt, in.Filename)
+		if res.Outcome != "" {
+			d.log("chat_"+kind, res, phone10, logBody)
+			ctx.JSON(res.HTTP, res.JSON())
+			return
+		}
+		media := map[string]any{"id": id}
+		if in.Caption != "" {
+			media["caption"] = in.Caption
+			logBody["caption"] = notifylogs.Masked
+			logBody["caption_chars"] = utf16Len(in.Caption)
+		}
+		if kind == "document" {
+			media["filename"] = in.Filename
+			logBody["filename"] = notifylogs.Masked
+		}
+		p["type"] = kind
+		p[kind] = media
+		logBody["bytes"] = len(data)
+		logBody["mime"] = mt
+	case "template":
+		p["type"] = "template"
+		p["template"] = in.Template.Payload()
+		logBody["name"] = in.Template.Name
+		logBody["language"] = in.Template.Language
+		logBody["body_params"] = len(in.Template.BodyParams)
 	}
 	res := d.postMessage(p, true)
 	if kind != "reaction" {

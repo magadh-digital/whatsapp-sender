@@ -398,3 +398,114 @@ func TestHelpers(t *testing.T) {
 		t.Error("pnid from url")
 	}
 }
+
+func TestDocumentUploadThenSend(t *testing.T) {
+	r, f, logs := setup(t)
+	b64 := base64.StdEncoding.EncodeToString([]byte("PK\x03\x04 fake xlsx"))
+	body := `{"ts":` + ts() + `,"phone":"9431022239","document_base64":"` + b64 + `","mime":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","filename":"Sales Oct 2026.xlsx","caption":"Sales report 42.5 MT"}`
+	w, out := post(r, body, "")
+	if w.Code != 200 || out["wamid"] != "wamid.OUT1" {
+		t.Fatalf("%d %v", w.Code, out)
+	}
+	if len(f.calls) != 2 || !strings.HasSuffix(f.calls[0], "/PNID/media") || !strings.HasSuffix(f.calls[1], "/PNID/messages") {
+		t.Fatalf("calls %v", f.calls)
+	}
+	if !strings.Contains(f.bodies[0], `filename="Sales Oct 2026.xlsx"`) || !strings.Contains(f.bodies[0], "spreadsheetml.sheet") {
+		t.Errorf("upload %s", f.bodies[0])
+	}
+	var m map[string]any
+	_ = json.Unmarshal([]byte(f.bodies[1]), &m)
+	doc, _ := m["document"].(map[string]any)
+	if m["type"] != "document" || doc["id"] != "MEDIA9" || doc["filename"] != "Sales Oct 2026.xlsx" || doc["caption"] != "Sales report 42.5 MT" {
+		t.Errorf("payload %v", m)
+	}
+	if (*logs)[0].Template != "chat_document" {
+		t.Errorf("log %+v", (*logs)[0])
+	}
+	if b, _ := json.Marshal((*logs)[0].Body); strings.Contains(string(b), "Sales") {
+		t.Errorf("file name / caption stored in the log: %s", b)
+	}
+	// csv goes up as text/plain, the name keeps .csv
+	csv := base64.StdEncoding.EncodeToString([]byte("a,b\n1,2\n"))
+	w, _ = post(r, `{"ts":`+ts()+`,"phone":"9431022239","document_base64":"`+csv+`","mime":"text/csv","filename":"sales.csv"}`, "")
+	if w.Code != 200 || !strings.Contains(f.bodies[2], "text/plain") || !strings.Contains(f.bodies[2], `filename="sales.csv"`) {
+		t.Errorf("csv: %d %s", w.Code, f.bodies[2])
+	}
+}
+
+func TestImageUploadThenSend(t *testing.T) {
+	r, f, logs := setup(t)
+	b64 := base64.StdEncoding.EncodeToString([]byte("\x89PNG fake"))
+	w, out := post(r, `{"ts":`+ts()+`,"phone":"9431022239","image_base64":"`+b64+`","mime":"image/png","caption":"Dispatch trend"}`, "")
+	if w.Code != 200 || out["outcome"] != "sent" {
+		t.Fatalf("%d %v", w.Code, out)
+	}
+	if !strings.Contains(f.bodies[0], `filename="image.png"`) || !strings.Contains(f.bodies[1], `"image":{"caption":"Dispatch trend","id":"MEDIA9"}`) {
+		t.Errorf("bodies %v", f.bodies)
+	}
+	if (*logs)[0].Template != "chat_image" {
+		t.Errorf("log %+v", (*logs)[0])
+	}
+	big := base64.StdEncoding.EncodeToString(make([]byte, MaxImageBytes+1))
+	if w, _ := post(r, `{"ts":`+ts()+`,"phone":"9431022239","image_base64":"`+big+`","mime":"image/png"}`, ""); w.Code != 413 || len(f.calls) != 2 {
+		t.Errorf("image cap: %d %v", w.Code, f.calls)
+	}
+}
+
+func TestTemplateSend(t *testing.T) {
+	r, f, logs := setup(t)
+	body := `{"ts":` + ts() + `,"phone":"9431022239","template":{"name":"scheduled_report_ready","language":"hi","body_params":["Ramesh","Roz shaam sales report"],"button_payloads":["mbot:sched:7"]}}`
+	w, out := post(r, body, "")
+	if w.Code != 200 || out["wamid"] != "wamid.OUT1" {
+		t.Fatalf("%d %v", w.Code, out)
+	}
+	var m map[string]any
+	_ = json.Unmarshal([]byte(f.bodies[0]), &m)
+	tpl, _ := m["template"].(map[string]any)
+	if m["type"] != "template" || tpl["name"] != "scheduled_report_ready" || tpl["language"].(map[string]any)["code"] != "hi" {
+		t.Fatalf("payload %v", m)
+	}
+	comps, _ := json.Marshal(tpl["components"])
+	want := `[{"parameters":[{"text":"Ramesh","type":"text"},{"text":"Roz shaam sales report","type":"text"}],"type":"body"},{"index":"0","parameters":[{"payload":"mbot:sched:7","type":"payload"}],"sub_type":"quick_reply","type":"button"}]`
+	if string(comps) != want {
+		t.Errorf("components %s", comps)
+	}
+	if (*logs)[0].Template != "chat_template" {
+		t.Errorf("log %+v", (*logs)[0])
+	}
+	if b, _ := json.Marshal((*logs)[0].Body); strings.Contains(string(b), "Ramesh") || !strings.Contains(string(b), "scheduled_report_ready") {
+		t.Errorf("params stored / name missing in the log: %s", b)
+	}
+}
+
+func TestMediaAndTemplateValidation(t *testing.T) {
+	r, f, _ := setup(t)
+	b := base64.StdEncoding.EncodeToString([]byte("x"))
+	cases := map[string]string{
+		"doc no filename":      `"phone":"9431022239","document_base64":"` + b + `","mime":"application/pdf"`,
+		"doc path filename":    `"phone":"9431022239","document_base64":"` + b + `","mime":"application/pdf","filename":"../etc/passwd.pdf"`,
+		"doc quote filename":   `"phone":"9431022239","document_base64":"` + b + `","mime":"application/pdf","filename":"a\"b.pdf"`,
+		"doc bad mime":         `"phone":"9431022239","document_base64":"` + b + `","mime":"application/x-msdownload","filename":"a.exe"`,
+		"image bad mime":       `"phone":"9431022239","image_base64":"` + b + `","mime":"image/gif"`,
+		"caption on text":      `"phone":"9431022239","text":"hi","caption":"x"`,
+		"filename on image":    `"phone":"9431022239","image_base64":"` + b + `","mime":"image/png","filename":"a.png"`,
+		"long caption":         `"phone":"9431022239","image_base64":"` + b + `","mime":"image/png","caption":"` + strings.Repeat("a", CaptionLimit+1) + `"`,
+		"doc and image":        `"phone":"9431022239","document_base64":"` + b + `","image_base64":"` + b + `","mime":"image/png"`,
+		"template bad name":    `"phone":"9431022239","template":{"name":"Bad Name","language":"hi"}`,
+		"template bad lang":    `"phone":"9431022239","template":{"name":"t1","language":"hindi"}`,
+		"template empty param": `"phone":"9431022239","template":{"name":"t1","language":"hi","body_params":[" "]}`,
+		"template newline":     `"phone":"9431022239","template":{"name":"t1","language":"hi","body_params":["a\nb"]}`,
+		"template spaces":      `"phone":"9431022239","template":{"name":"t1","language":"hi","body_params":["a      b"]}`,
+		"template reply_to":    `"phone":"9431022239","template":{"name":"t1","language":"hi"},"reply_to":"wamid.X"`,
+		"template and text":    `"phone":"9431022239","template":{"name":"t1","language":"hi"},"text":"hi"`,
+	}
+	for name, c := range cases {
+		w, out := post(r, `{"ts":`+ts()+`,`+c+`}`, "")
+		if w.Code != 400 || out["outcome"] != "not_sent" {
+			t.Errorf("%s: %d %v", name, w.Code, out)
+		}
+	}
+	if len(f.calls) != 0 {
+		t.Errorf("Meta called on invalid input: %v", f.calls)
+	}
+}
