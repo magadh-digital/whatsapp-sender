@@ -76,8 +76,11 @@ type Row struct {
 	Variables      int          `json:"variables"`
 	Footer         string       `json:"footer,omitempty"`
 	Buttons        []metaButton `json:"buttons"`
-	// a send preset with this name exists here, so /templates/send-message can send it
+	// a send preset with this name exists here (only the ERP's older named-variable sends need one)
 	Wired bool `json:"wired"`
+	// messages ever queued under this name (this service's log) and when the last one was
+	Sent       int64      `json:"sent"`
+	LastSentAt *time.Time `json:"last_sent_at,omitempty"`
 	// hidden from the default list (local to this service, a Redis set; Meta is not told)
 	Archived bool `json:"archived"`
 }
@@ -181,10 +184,17 @@ func fetchAll(cfg config.MetaConfig) ([]metaTemplate, *metaError, error) {
 	return out, nil, nil
 }
 
-func toRow(t metaTemplate, wired map[string]bool) Row {
+func toRow(t metaTemplate, wired map[string]bool, stats map[string]models.TemplateStat) Row {
 	r := Row{
 		ID: t.ID, Name: t.Name, Language: t.Language, Category: t.Category, Status: t.Status,
 		BodyExamples: []string{}, Buttons: []metaButton{}, Wired: wired[t.Name],
+	}
+	if st, ok := stats[t.Name]; ok {
+		r.Sent = st.Sent
+		if !st.LastSentAt.IsZero() {
+			at := st.LastSentAt
+			r.LastSentAt = &at
+		}
 	}
 	if t.RejectedReason != "" && t.RejectedReason != "NONE" {
 		r.RejectedReason = t.RejectedReason
@@ -248,9 +258,10 @@ func loadRows(cfg config.MetaConfig, refresh bool) ([]Row, time.Time, bool, *met
 		return nil, time.Time{}, false, merr, err
 	}
 	wired := wiredNames()
+	stats := models.TemplateStats()
 	rows := make([]Row, 0, len(list))
 	for _, t := range list {
-		rows = append(rows, toRow(t, wired))
+		rows = append(rows, toRow(t, wired, stats))
 	}
 	cache.rows = rows
 	cache.fetched = time.Now()

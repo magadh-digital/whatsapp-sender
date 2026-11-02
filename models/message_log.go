@@ -3,12 +3,13 @@ package models
 import (
 	"context"
 	"fmt"
-	"time"
-	"notify/db"
-
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"notify/db"
+	"sync"
+	"time"
 )
 
 const (
@@ -92,4 +93,50 @@ func GetMessageLogs(query bson.M, option options.FindOptions) ([]MessageLog, err
 func CountMessageLogs(query bson.M) int64 {
 	count, _ := db.MessageLogModel.CountDocuments(context.Background(), query)
 	return count
+}
+
+// TemplateStat is what the log says about one template: how many messages were ever queued under its name and when
+// the last one was.
+type TemplateStat struct {
+	Sent       int64     `json:"sent"`
+	LastSentAt time.Time `json:"last_sent_at"`
+}
+
+var statsIndexOnce sync.Once
+
+// TemplateStats groups the whole message log by template name (one aggregation; the template list caches it for
+// 60 s). A missing collection or a failed aggregation gives an empty map, never an error to the caller.
+func TemplateStats() map[string]TemplateStat {
+	out := map[string]TemplateStat{}
+	if db.MessageLogModel == nil {
+		return out
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	statsIndexOnce.Do(func() {
+		_, _ = db.MessageLogModel.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "template", Value: 1}, {Key: "created_at", Value: -1}}})
+	})
+	cur, err := db.MessageLogModel.Aggregate(ctx, mongo.Pipeline{
+		{{Key: "$group", Value: bson.D{
+			{Key: "_id", Value: "$template"},
+			{Key: "sent", Value: bson.D{{Key: "$sum", Value: 1}}},
+			{Key: "last", Value: bson.D{{Key: "$max", Value: "$created_at"}}},
+		}}},
+	})
+	if err != nil {
+		fmt.Println("template stats:", err)
+		return out
+	}
+	defer cur.Close(ctx)
+	for cur.Next(ctx) {
+		var row struct {
+			ID   string    `bson:"_id"`
+			Sent int64     `bson:"sent"`
+			Last time.Time `bson:"last"`
+		}
+		if cur.Decode(&row) == nil && row.ID != "" {
+			out[row.ID] = TemplateStat{Sent: row.Sent, LastSentAt: row.Last}
+		}
+	}
+	return out
 }
