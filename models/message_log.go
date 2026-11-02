@@ -24,6 +24,14 @@ type MessageLog struct {
 	Phone     string                 `json:"phone" bson:"phone"`
 	Status    string                 `json:"status" bson:"status"`
 	CreatedAt time.Time              `json:"created_at" bson:"created_at"`
+	// the caller's batch id (a console broadcast's job id), empty for single sends
+	Ref string `json:"ref,omitempty" bson:"ref,omitempty"`
+}
+
+// WithRef tags the log row with the caller's batch id; an empty ref changes nothing.
+func (m *MessageLog) WithRef(ref string) *MessageLog {
+	m.Ref = ref
+	return m
 }
 
 func NewMessageLog(template string, payload map[string]interface{}, phone string, status string, body map[string]interface{}) *MessageLog {

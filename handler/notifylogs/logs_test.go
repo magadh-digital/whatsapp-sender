@@ -97,3 +97,15 @@ func TestToRowDelivery(t *testing.T) {
 		t.Errorf("failed: %+v %s", r.Status, r.Error)
 	}
 }
+
+func TestBuildFilterRef(t *testing.T) {
+	s := time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC)
+	e := s.AddDate(0, 0, 1)
+	q := BuildFilterRef(s, e, "mahan_dhanteras_silver_2026", "", "delivered", "job-1")
+	if q["ref"] != "job-1" || q["template"] != "mahan_dhanteras_silver_2026" || q["delivery_status"] != "delivered" {
+		t.Errorf("ref filter: %v", q)
+	}
+	if _, ok := BuildFilter(s, e, "", "", "")["ref"]; ok {
+		t.Error("no ref given must not filter on it")
+	}
+}

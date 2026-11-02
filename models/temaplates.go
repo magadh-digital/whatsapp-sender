@@ -32,24 +32,41 @@ type WhatsappTemplate struct {
 		Code string `json:"code"`
 	} `json:"language" bson:"language"`
 
-	Components []struct {
-		Type       string `json:"type" binding:"required"`
-		SubType    string `json:"sub_type,omitempty" bson:"sub_type,omitempty"`
-		Index      uint   `json:"index" bson:"index"`
-		Parameters []struct {
-			Type          string `json:"type" binding:"required"`
-			Text          string `json:"text,omitempty" bson:"text,omitempty"`
-			ParameterName string `json:"parameter_name,omitempty" bson:"parameter_name,omitempty"`
+	Components []TemplateComponent `json:"components"`
+}
 
-			Image *struct {
-				Link string `json:"link,omitempty" bson:"link,omitempty"`
-			} `json:"image,omitempty" bson:"image,omitempty"`
-			Video *struct {
-				ID   string `json:"id,omitempty" bson:"id,omitempty"`
-				Link string `json:"link,omitempty" bson:"link,omitempty"`
-			} `json:"video,omitempty" bson:"video,omitempty"`
-		} `json:"parameters"`
-	} `json:"components"`
+// TemplateComponent is one entry of Meta's "template.components" (header, body, button), as a preset stores it and
+// as a send carries it. In a preset a text parameter's Text is the VARIABLE NAME the caller fills; in a send it is
+// the value.
+type TemplateComponent struct {
+	Type       string              `json:"type" binding:"required"`
+	SubType    string              `json:"sub_type,omitempty" bson:"sub_type,omitempty"`
+	Index      uint                `json:"index" bson:"index"`
+	Parameters []TemplateParameter `json:"parameters"`
+}
+
+type TemplateParameter struct {
+	Type          string `json:"type" binding:"required"`
+	Text          string `json:"text,omitempty" bson:"text,omitempty"`
+	ParameterName string `json:"parameter_name,omitempty" bson:"parameter_name,omitempty"`
+
+	Image    *MediaLink   `json:"image,omitempty" bson:"image,omitempty"`
+	Video    *MediaRef    `json:"video,omitempty" bson:"video,omitempty"`
+	Document *DocumentRef `json:"document,omitempty" bson:"document,omitempty"`
+}
+
+type MediaLink struct {
+	Link string `json:"link,omitempty" bson:"link,omitempty"`
+}
+
+type MediaRef struct {
+	ID   string `json:"id,omitempty" bson:"id,omitempty"`
+	Link string `json:"link,omitempty" bson:"link,omitempty"`
+}
+
+type DocumentRef struct {
+	Link     string `json:"link,omitempty" bson:"link,omitempty"`
+	Filename string `json:"filename,omitempty" bson:"filename,omitempty"`
 }
 
 func (w *WhatsappTemplate) SetDefault() WhatsappTemplate {
@@ -298,6 +315,12 @@ func (w *WhatsappTemplate) ExtractVariables() []string {
 var WhatsappRequest = http.Request{}
 
 func SendMessage(template *WhatsappTemplate, phone string) error {
+	return SendMessageRef(template, phone, "")
+}
+
+// SendMessageRef sends one template message and logs it; `ref` (a caller's batch id, e.g. a console broadcast) is
+// kept on the log row so /notify-logs?ref= lists exactly that batch.
+func SendMessageRef(template *WhatsappTemplate, phone string, ref string) error {
 	// send message to phone
 
 	body := map[string]interface{}{
@@ -362,14 +385,14 @@ func SendMessage(template *WhatsappTemplate, phone string) error {
 	if resp.StatusCode != 200 {
 		NewMessageLog(template.Name, payload, phone, MessageLogStatusFailed, bson.M{
 			"components": template.Components,
-		}).Create()
+		}).WithRef(ref).Create()
 		fmt.Println("error in sending message", string(respBody))
 		return nil
 	}
 
 	NewMessageLog(template.Name, payload, phone, MessageLogStatusSuccess, bson.M{
 		"components": template.Components,
-	}).Create()
+	}).WithRef(ref).Create()
 
 	return nil
 }

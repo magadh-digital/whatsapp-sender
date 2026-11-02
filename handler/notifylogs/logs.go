@@ -77,6 +77,7 @@ type logDoc struct {
 	ID        primitive.ObjectID `bson:"_id"`
 	Template  string             `bson:"template"`
 	Phone     string             `bson:"phone"`
+	Ref       string             `bson:"ref"`
 	Status    string             `bson:"status"`
 	CreatedAt time.Time          `bson:"created_at"`
 	Body      bson.Raw           `bson:"body"`
@@ -97,6 +98,8 @@ type Row struct {
 	ID        string    `json:"id"`
 	Time      time.Time `json:"time"`
 	Template  string    `json:"template"`
+	// the caller's batch id (a console broadcast), "" for single sends
+	Ref string `json:"ref,omitempty"`
 	To        string    `json:"to"`
 	Variables []string  `json:"variables"`
 	// sent | delivered | read | failed: the furthest the message got (failed = Meta refused the send or the webhook said so)
@@ -148,7 +151,7 @@ func ToRow(d logDoc, otp bool) Row {
 	body := rawToMap(d.Body)
 	resp := rawToMap(d.Payload)
 	r := Row{
-		ID: d.ID.Hex(), Time: d.CreatedAt, Template: d.Template, To: d.Phone,
+		ID: d.ID.Hex(), Time: d.CreatedAt, Template: d.Template, To: d.Phone, Ref: d.Ref,
 		Variables: []string{}, OtpMasked: otp, Body: body, Response: resp, Status: "failed",
 		Accepted: d.Status == "SUCCESS", Delivery: d.Delivery,
 		SentAt: d.SentAt, DeliveredAt: d.DeliveredAt, ReadAt: d.ReadAt, FailedAt: d.FailedAt, ErrorCode: d.ErrorCode,
@@ -196,9 +199,17 @@ func ToRow(d logDoc, otp bool) Row {
 
 // BuildFilter: the Mongo query for the date range and the optional template / phone (last 10 digits) / status.
 func BuildFilter(start, end time.Time, template, phone, status string) bson.M {
+	return BuildFilterRef(start, end, template, phone, status, "")
+}
+
+// BuildFilterRef is BuildFilter plus the optional batch id a send was queued with (/templates/send-message `ref`).
+func BuildFilterRef(start, end time.Time, template, phone, status, ref string) bson.M {
 	q := bson.M{"created_at": bson.M{"$gte": start, "$lt": end}}
 	if template != "" {
 		q["template"] = template
+	}
+	if ref != "" {
+		q["ref"] = ref
 	}
 	if d := nonDigit.ReplaceAllString(phone, ""); d != "" {
 		if len(d) > 10 {
@@ -230,7 +241,7 @@ func validStatus(s string) bool {
 
 func ensureIndexes() {
 	indexOnce.Do(func() {
-		for _, keys := range []bson.D{{{Key: "created_at", Value: -1}}, {{Key: "payload.messages.id", Value: 1}}} {
+		for _, keys := range []bson.D{{{Key: "created_at", Value: -1}}, {{Key: "payload.messages.id", Value: 1}}, {{Key: "ref", Value: 1}, {Key: "created_at", Value: -1}}} {
 			if _, err := db.MessageLogModel.Indexes().CreateOne(context.Background(), mongo.IndexModel{Keys: keys}); err != nil {
 				log.Println("[notify-logs] index:", err)
 			}
@@ -238,7 +249,7 @@ func ensureIndexes() {
 	})
 }
 
-// List: GET /notify-logs?from=&to=&template=&phone=&status=sent|delivered|read|failed&page=&limit=
+// List: GET /notify-logs?from=&to=&template=&phone=&ref=&status=sent|delivered|read|failed&page=&limit=
 func List(ctx *gin.Context) {
 	if db.MessageLogModel == nil {
 		ctx.JSON(503, gin.H{"message": "Message log store not connected"})
@@ -267,7 +278,8 @@ func List(ctx *gin.Context) {
 
 	template := strings.TrimSpace(ctx.Query("template"))
 	phone := ctx.Query("phone")
-	filter := BuildFilter(start, end, template, phone, status)
+	ref := strings.TrimSpace(ctx.Query("ref"))
+	filter := BuildFilterRef(start, end, template, phone, status, ref)
 	c := context.Background()
 
 	opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}}).SetSkip(int64((page - 1) * limit)).SetLimit(int64(limit))
@@ -292,7 +304,7 @@ func List(ctx *gin.Context) {
 	// counts per status under the same filters except status (for the console's pills)
 	counts := gin.H{}
 	for _, word := range statusFilters {
-		n, _ := db.MessageLogModel.CountDocuments(c, BuildFilter(start, end, template, phone, word))
+		n, _ := db.MessageLogModel.CountDocuments(c, BuildFilterRef(start, end, template, phone, word, ref))
 		counts[word] = n
 	}
 

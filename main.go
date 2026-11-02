@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 	"notify/config"
@@ -185,60 +184,8 @@ func main() {
 		Now: time.Now,
 	})
 
-	templateRoutes.POST("/send-message", func(ctx *gin.Context) {
-
-		var data struct {
-			ID        string            `json:"id" binding:"required"`
-			Variables map[string]string `json:"variables" binding:"required"`
-			Phone     []string          `json:"phone" binding:"required"`
-		}
-
-		err := ctx.ShouldBind(&data)
-
-		if err != nil {
-			ctx.JSON(400, gin.H{
-				"message": "Error in parsing data",
-				"error":   err.Error(),
-			})
-			return
-		}
-
-		if len(data.Phone) == 0 {
-			ctx.JSON(400, gin.H{
-				"message": "Invalid data",
-				"error":   "Phone number is required",
-			})
-			return
-		}
-
-		template, err := models.GetTemplateByName(data.ID)
-
-		if err != nil {
-			ctx.JSON(500, gin.H{
-				"error": err.Error(),
-			})
-			return
-		}
-
-		errorList := models.ValidateVariables(template, data.Variables)
-
-		if len(errorList) != 0 {
-			ctx.JSON(400, gin.H{
-				"message": "Invalid data",
-				"error":   strings.Join(errorList, "\n"),
-			})
-			return
-		}
-
-		result := models.GenerateWhatsappMessage(template, data.Variables)
-
-		utils.QueueMessage(result, data.Phone)
-
-		ctx.JSON(200, gin.H{
-			"message": "Message in queue... will be sent soon",
-		})
-
-	})
+	// named variables → the send preset; positional values or none → Meta's own definition (handler/templates/send_message.go)
+	templateRoutes.POST("/send-message", handler.SendTemplateMessage)
 
 	constantRoutes.GET("/bank-assign-types", handler.GetBankAssignTypes)
 	constantRoutes.GET("/all", handler.GetAllConstants)

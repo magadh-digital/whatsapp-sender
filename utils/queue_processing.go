@@ -8,12 +8,19 @@ import (
 	"notify/redis"
 )
 
+// QueuePayload is one queued send: the filled template, the phone and the caller's batch id (kept on the log row).
 type QueuePayload struct {
 	Payload *models.WhatsappTemplate
 	Phone   string
+	Ref     string `json:",omitempty"`
 }
 
 func QueueMessage(payload *models.WhatsappTemplate, phone []string) {
+	QueueMessageRef(payload, phone, "")
+}
+
+// QueueMessageRef pushes one job per phone onto the Redis list the workers drain; `ref` travels with each job.
+func QueueMessageRef(payload *models.WhatsappTemplate, phone []string, ref string) {
 
 	payloadList := make([]string, 0)
 
@@ -22,6 +29,7 @@ func QueueMessage(payload *models.WhatsappTemplate, phone []string) {
 		queuePayload := QueuePayload{
 			Payload: payload,
 			Phone:   phone[i],
+			Ref:     ref,
 		}
 
 		// marshal the payload
@@ -53,13 +61,10 @@ func QueueProcessing() {
 			for {
 				queuePayload := <-queue
 
-				payload := queuePayload.Payload
-				phone := queuePayload.Phone
-
-				models.SendMessage(payload, phone)
+				models.SendMessageRef(queuePayload.Payload, queuePayload.Phone, queuePayload.Ref)
 
 				// save the message in database
-				fmt.Println("Message sent to ", phone)
+				fmt.Println("Message sent to ", queuePayload.Phone)
 			}
 		}()
 	}
@@ -87,35 +92,4 @@ func QueueProcessing() {
 			}
 		}
 	}()
-
-	// for i := 0; i < concurrent; i += 1 {
-	// 	go func() {
-	// 		client := redis.GetRedisClient()
-
-	// 		defer client.Close()
-
-	// 		for {
-	// 			result := client.BLPop(client.Context(), 0, redis.WhatsappMessageQueue).Val()
-
-	// 			value := result[1]
-
-	// 			if value != "" {
-	// 				var payload QueuePayload
-	// 				err := json.Unmarshal([]byte(value), &payload)
-
-	// 				if err != nil {
-	// 					// TODO: Log the error in database
-	// 					fmt.Println("Error in unmarshalling payload", err)
-	// 					continue
-	// 				}
-
-	// 				models.SendMessage(payload.Payload, payload.Phone)
-
-	// 				// save the message in database
-	// 				fmt.Println("Message sent to ", payload.Phone)
-
-	// 			}
-	// 		}
-	// 	}()
-	// }
 }
