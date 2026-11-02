@@ -30,8 +30,37 @@ func Resolve(name, language string) (*Row, string) {
 	return PickRow(rows, name, language)
 }
 
-// PickRow is Resolve's pure part over an already fetched list.
+// Lookup is Resolve without the APPROVED requirement: the template in that language whatever its status (a
+// campaign waiting for approval polls it); refresh bypasses the 60 s cache.
+func Lookup(name, language string, refresh bool) (*Row, string) {
+	cfg := config.GetMetaConfig()
+	if msg := notConfigured(cfg); msg != "" {
+		return nil, msg
+	}
+	rows, _, _, merr, err := loadRows(cfg, refresh)
+	if err != nil {
+		return nil, "Could not reach Meta: " + err.Error()
+	}
+	if merr != nil {
+		return nil, "Meta refused the template list: " + merr.Text()
+	}
+	return PickRowAny(rows, name, language)
+}
+
+// PickRow is Resolve's pure part over an already fetched list: the APPROVED template in that language.
 func PickRow(rows []Row, name, language string) (*Row, string) {
+	pick, msg := PickRowAny(rows, name, language)
+	if pick == nil {
+		return nil, msg
+	}
+	if pick.Status != "APPROVED" {
+		return nil, fmt.Sprintf("%s (%s) is %s on Meta, not APPROVED: Meta will not deliver it", pick.Name, pick.Language, pick.Status)
+	}
+	return pick, ""
+}
+
+// PickRowAny: the template in that language whatever its status ("" = its only language, or "en" among several).
+func PickRowAny(rows []Row, name, language string) (*Row, string) {
 	matches := []Row{}
 	for _, r := range rows {
 		if r.Name == name {
@@ -67,9 +96,6 @@ func PickRow(rows []Row, name, language string) (*Row, string) {
 		if pick == nil {
 			return nil, fmt.Sprintf("%s exists in several languages on Meta (%s): say which with \"language\"", name, strings.Join(langs, ", "))
 		}
-	}
-	if pick.Status != "APPROVED" {
-		return nil, fmt.Sprintf("%s (%s) is %s on Meta, not APPROVED: Meta will not deliver it", pick.Name, pick.Language, pick.Status)
 	}
 	return pick, ""
 }

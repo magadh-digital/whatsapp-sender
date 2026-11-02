@@ -13,6 +13,7 @@ import (
 	"notify/constants"
 	"notify/db"
 	"notify/handler"
+	"notify/handler/campaigns"
 	"notify/handler/chatmsg"
 	"notify/handler/metatemplates"
 	"notify/handler/notifylogs"
@@ -110,6 +111,9 @@ func main() {
 	db.RegisterModels(constants.WhatsappTemplateCollection, constants.MessageLogCollection)
 
 	go utils.QueueProcessing()
+	// campaigns waiting for Meta's approval: looked at once a minute, queued when approved
+	campaigns.QueueFn = utils.QueueMessageRef
+	go campaigns.Loop(60 * time.Second)
 
 	// gin.SetMode(gin.ReleaseMode)
 	server := gin.Default()
@@ -153,12 +157,23 @@ func main() {
 	// Callers send their console session (app-session-id), checked against mds-orders (AUTH_VALIDATE_URL).
 	metaTemplateRoutes := server.Group("/meta-templates", middleware.RequireStaff())
 	metaTemplateRoutes.GET("", metatemplates.List)
-	metaTemplateRoutes.GET("/:name", metatemplates.Get)
+	// one template's languages and statuses: staff, or a service signed with NOTIFY_STATUS_SECRET (mds-orders polls a
+	// composed broadcast's template until Meta approves it)
+	server.GET("/meta-templates/:name", middleware.RequireStaffOrService(), metatemplates.Get)
 	canManage := middleware.RequirePermission(config.GetMetaConfig().CreatePermission)
 	metaTemplateRoutes.POST("", canManage, metatemplates.Create)
 	metaTemplateRoutes.DELETE("/:name", canManage, metatemplates.Delete)
 	metaTemplateRoutes.POST("/:name/archive", canManage, metatemplates.Archive)
 	metaTemplateRoutes.POST("/:name/unarchive", canManage, metatemplates.Unarchive)
+
+	// Campaigns: a template message to a phone list, owned here (queued now, or once Meta approves a composed one).
+	// Creating needs a staff session (the broadcast's sender, through mds-orders); reading one also takes a service signature.
+	campaignRoutes := server.Group("/campaigns", middleware.RequireStaff())
+	campaignRoutes.POST("", campaigns.Create)
+	campaignRoutes.GET("", campaigns.List)
+	campaignRoutes.POST("/:ref/check", campaigns.Check)
+	campaignRoutes.POST("/:ref/cancel", campaigns.Cancel)
+	server.GET("/campaigns/:ref", middleware.RequireStaffOrService(), campaigns.Get)
 
 	// What this service sent (message_logs), phones masked, OTP variables hidden; staff session.
 	server.GET("/notify-logs", middleware.RequireStaff(), notifylogs.List)

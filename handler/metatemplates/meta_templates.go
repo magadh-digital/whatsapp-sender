@@ -359,42 +359,56 @@ func Create(ctx *gin.Context) {
 		ctx.JSON(200, gin.H{"dry_run": true, "configured": notConfigured(cfg) == "", "payload": payload})
 		return
 	}
-	if msg := notConfigured(cfg); msg != "" {
-		ctx.JSON(503, gin.H{"message": msg})
+	res, status, msg, merr := Submit(payload, &in, middleware.GetSessionUser(ctx))
+	if status != 200 {
+		if merr != nil {
+			ctx.JSON(status, gin.H{"message": msg, "meta_error": merr})
+			return
+		}
+		ctx.JSON(status, gin.H{"message": msg})
 		return
 	}
+	ctx.JSON(200, gin.H{"message": "Submitted to Meta for approval", "result": res})
+}
 
+// Submit sends a payload built by BuildPayload to Meta. It answers Meta's result (id, status, category) with 200,
+// or the HTTP status and message of the refusal (503 not configured, 409 name + language exists, 400 Meta refused,
+// 502 Meta unreachable). `user` is for the log line only; a service caller passes nil. Campaigns use it too.
+func Submit(payload map[string]any, in *CreateRequest, user *middleware.SessionUser) (map[string]any, int, string, *metaError) {
+	cfg := config.GetMetaConfig()
+	if msg := notConfigured(cfg); msg != "" {
+		return nil, 503, msg, nil
+	}
 	// a friendlier refusal than Meta's when the name + language already exists
 	if rows, _, _, merr, err := loadRows(cfg, false); err == nil && merr == nil {
 		for _, r := range rows {
 			if r.Name == in.Name && r.Language == in.Language {
-				ctx.JSON(409, gin.H{"message": fmt.Sprintf("A template %s (%s) already exists with status %s", r.Name, r.Language, r.Status)})
-				return
+				return nil, 409, fmt.Sprintf("A template %s (%s) already exists with status %s", r.Name, r.Language, r.Status), nil
 			}
 		}
 	}
-
-	user := middleware.GetSessionUser(ctx)
+	who := "a service"
+	if user != nil {
+		who = fmt.Sprintf("%s (%s)", user.Name, user.ID)
+	}
 	raw, status, merr, err := graph(cfg, "POST", templatesURL(cfg), payload)
-	if err != nil || merr != nil {
-		if merr != nil && status >= 400 && status < 500 {
-			status = 400
-		} else {
-			status = 502
+	if err != nil {
+		log.Printf("[meta-templates] create %s by %s failed: %v", in.Name, who, err)
+		return nil, 502, "Could not reach Meta: " + err.Error(), nil
+	}
+	if merr != nil {
+		st := 502
+		if status >= 400 && status < 500 {
+			st = 400
 		}
-		if user != nil {
-			log.Printf("[meta-templates] create %s by %s (%s) refused: %v %v", in.Name, user.Name, user.ID, err, merr)
-		}
-		metaFailure(ctx, status, merr, err)
-		return
+		log.Printf("[meta-templates] create %s by %s refused: %v", in.Name, who, merr)
+		return nil, st, merr.Text(), merr
 	}
 	dropCache()
 	var res map[string]any
 	_ = json.Unmarshal(raw, &res)
-	if user != nil {
-		log.Printf("[meta-templates] created %s (%s, %s) by %s (%s): %s", in.Name, in.Language, in.Category, user.Name, user.ID, string(raw))
-	}
-	ctx.JSON(200, gin.H{"message": "Submitted to Meta for approval", "result": res})
+	log.Printf("[meta-templates] created %s (%s, %s) by %s: %s", in.Name, in.Language, in.Category, who, string(raw))
+	return res, 200, "", nil
 }
 
 // ---------------------------------------------------------------- validation
