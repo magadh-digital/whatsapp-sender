@@ -75,12 +75,10 @@ func (w *WhatsappTemplate) SetDefault() WhatsappTemplate {
 
 func (w *WhatsappTemplate) Validate() error {
 
-	if w.Components == nil {
-		return fmt.Errorf("components is null")
-	}
-
+	// A Meta template without variables (a plain marketing notice) is sent with no components at all:
+	// an empty list is a valid preset for it (console broadcasts create these, 2026-11-02).
 	if len(w.Components) == 0 {
-		return fmt.Errorf("components is empty")
+		return nil
 	}
 
 	for _, component := range w.Components {
