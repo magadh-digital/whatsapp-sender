@@ -54,3 +54,26 @@ func TestValuesOf(t *testing.T) {
 		t.Errorf("values %+v", v)
 	}
 }
+
+func TestMatchApproved(t *testing.T) {
+	rows := []metatemplates.Row{
+		{Name: "old_pending", Language: "en", Status: "PENDING", Body: "Diwali offer: 2% off"},
+		{Name: "with_var", Language: "en", Status: "APPROVED", Body: "Diwali offer: {{1}} off", Variables: 1},
+		{Name: "with_header", Language: "en", Status: "APPROVED", Body: "Diwali offer: 2% off", HeaderFormat: "IMAGE"},
+		{Name: "hindi", Language: "hi", Status: "APPROVED", Body: "Diwali offer: 2% off"},
+		{Name: "footered", Language: "en", Status: "APPROVED", Body: "Diwali offer: 2% off", Footer: "Team MAHAN"},
+		{Name: "plain", Language: "en", Status: "APPROVED", Body: "Diwali offer: 2% off"},
+	}
+	if r := MatchApproved(rows, "Diwali offer: 2% off\r\n", "", "en"); r == nil || r.Name != "plain" {
+		t.Errorf("plain text must match the approved, body-only, same-language template: %+v", r)
+	}
+	if r := MatchApproved(rows, "Diwali offer: 2% off", "Team MAHAN ", "en"); r == nil || r.Name != "footered" {
+		t.Errorf("footer must match too: %+v", r)
+	}
+	if r := MatchApproved(rows, "Diwali offer: 3% off", "", "en"); r != nil {
+		t.Errorf("different text must not match: %+v", r)
+	}
+	if r := MatchApproved(rows, "Diwali offer: 2% off", "", "hi_IN"); r != nil {
+		t.Errorf("other language must not match: %+v", r)
+	}
+}

@@ -47,6 +47,23 @@ func Lookup(name, language string, refresh bool) (*Row, string) {
 	return PickRowAny(rows, name, language)
 }
 
+// Rows is the whole template list as Meta has it (every status); refresh bypasses the 60 s cache. The message
+// says why when it could not be read.
+func Rows(refresh bool) ([]Row, string) {
+	cfg := config.GetMetaConfig()
+	if msg := notConfigured(cfg); msg != "" {
+		return nil, msg
+	}
+	rows, _, _, merr, err := loadRows(cfg, refresh)
+	if err != nil {
+		return nil, "Could not reach Meta: " + err.Error()
+	}
+	if merr != nil {
+		return nil, "Meta refused the template list: " + merr.Text()
+	}
+	return rows, ""
+}
+
 // PickRow is Resolve's pure part over an already fetched list: the APPROVED template in that language.
 func PickRow(rows []Row, name, language string) (*Row, string) {
 	pick, msg := PickRowAny(rows, name, language)

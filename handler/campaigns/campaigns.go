@@ -4,7 +4,10 @@
 //	                             template: { name, language, params, header, buttons }   an APPROVED template: queued now
 //	                           | compose:  { name, language, category, body, footer } }  a new message: submitted to Meta
 //	                                                                                     as a template of that name,
-//	                                                                                     queued when Meta approves it
+//	                                                                                     queued when Meta approves it;
+//	                                                                                     text already APPROVED under
+//	                                                                                     another name → sent with that
+//	                                                                                     one at once (reused_template)
 //	GET  /campaigns[?status=&refs=a,b]   newest first
 //	GET  /campaigns/:ref                 one campaign (staff session, or a service signed with NOTIFY_STATUS_SECRET)
 //	POST /campaigns/:ref/check           look at Meta now instead of waiting for the loop
@@ -117,6 +120,28 @@ func valuesOf(c *models.Campaign) metatemplates.SendValues {
 		}
 	}
 	return v
+}
+
+// normText: the text as Meta compares it (trimmed, \n line ends), so a message typed twice matches.
+func normText(s string) string {
+	return strings.TrimSpace(strings.ReplaceAll(s, "\r\n", "\n"))
+}
+
+// MatchApproved: an APPROVED template in that language whose text is exactly this body and footer, with no
+// header, no variables and no buttons, so the message can be sent with it instead of asking Meta for a new one.
+// Pure; nil when there is none.
+func MatchApproved(rows []metatemplates.Row, body, footer, language string) *metatemplates.Row {
+	body, footer = normText(body), normText(footer)
+	for i := range rows {
+		r := &rows[i]
+		if r.Status != "APPROVED" || r.Language != language || r.HeaderFormat != "" || r.Variables != 0 || len(r.Buttons) != 0 {
+			continue
+		}
+		if normText(r.Body) == body && normText(r.Footer) == footer {
+			return r
+		}
+	}
+	return nil
 }
 
 // Decision is what Apply decided for an awaiting campaign.
@@ -292,6 +317,26 @@ func Create(ctx *gin.Context) {
 	if strings.Contains(req.Body, "{{") {
 		refuse(ctx, 400, "Body: a message written for a campaign has no {{variables}}; use an approved template with values instead")
 		return
+	}
+	// the same text already approved on Meta (sent once before): send with it, no new template, no wait
+	if rows, _ := metatemplates.Rows(false); rows != nil {
+		if row := MatchApproved(rows, req.Body, req.Footer, req.Language); row != nil {
+			c.Name, c.Language, c.MetaStatus = row.Name, row.Language, row.Status
+			c.Compose = &models.CampaignCompose{Body: req.Body, Footer: req.Footer, Category: row.Category}
+			c.ReusedTemplate = true
+			c.Status = models.CampaignAwaiting // queue() sets queued / failed
+			queue(c, row, now)
+			if c.Status == models.CampaignFailed {
+				refuse(ctx, 400, c.Error)
+				return
+			}
+			if err := c.Insert(); err != nil {
+				log.Printf("[campaigns] insert %s after queueing: %v", c.Ref, err)
+			}
+			log.Printf("[campaigns] %s: text matches approved template %s (%s), %d phones queued by %s", c.Ref, c.Name, c.Language, c.Queued, by.Name)
+			ctx.JSON(200, gin.H{"message": "Sent with the approved template " + c.Name + "; no new template was needed", "campaign": c, "dropped_phones": dropped})
+			return
+		}
 	}
 	res, status, msg, merr := metatemplates.Submit(payload, req, user)
 	if status != 200 {

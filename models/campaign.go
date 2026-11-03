@@ -59,13 +59,15 @@ type Campaign struct {
 	MetaStatus     string `bson:"meta_status,omitempty" json:"meta_status,omitempty"`
 	RejectedReason string `bson:"rejected_reason,omitempty" json:"rejected_reason,omitempty"`
 	// the last check's or queueing's problem, "" when none
-	Error     string           `bson:"error,omitempty" json:"error,omitempty"`
-	Compose   *CampaignCompose `bson:"compose,omitempty" json:"compose,omitempty"`
-	By        CampaignBy       `bson:"by" json:"by"`
-	CreatedAt time.Time        `bson:"created_at" json:"created_at"`
-	UpdatedAt time.Time        `bson:"updated_at" json:"updated_at"`
-	CheckedAt *time.Time       `bson:"checked_at,omitempty" json:"checked_at,omitempty"`
-	QueuedAt  *time.Time       `bson:"queued_at,omitempty" json:"queued_at,omitempty"`
+	Error   string           `bson:"error,omitempty" json:"error,omitempty"`
+	Compose *CampaignCompose `bson:"compose,omitempty" json:"compose,omitempty"`
+	// a composed message whose text matched a template already approved on Meta: sent with it, no new template
+	ReusedTemplate bool       `bson:"reused_template,omitempty" json:"reused_template,omitempty"`
+	By             CampaignBy `bson:"by" json:"by"`
+	CreatedAt      time.Time  `bson:"created_at" json:"created_at"`
+	UpdatedAt      time.Time  `bson:"updated_at" json:"updated_at"`
+	CheckedAt      *time.Time `bson:"checked_at,omitempty" json:"checked_at,omitempty"`
+	QueuedAt       *time.Time `bson:"queued_at,omitempty" json:"queued_at,omitempty"`
 	// phones pushed to the send queue
 	Queued int `bson:"queued" json:"queued"`
 }
